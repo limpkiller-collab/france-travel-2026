@@ -1,5 +1,14 @@
 <!DOCTYPE html>
 <!-- Version History (최신순) -->
+<!-- v3.11.1 (2026.04.01) : [버그수정] saveToStorage/loadFromStorage에 FOOD/CAFE/SPOT/HOTEL/SCHEDULE_DATA 포함,
+                            submitNewFood·submitNewCafe saveToStorage 호출 누락 수정,
+                            pushToFirebase·startFirebaseListener 전체 데이터 배열 동기화 반영,
+                            refreshAllUI 전체 패널 재렌더링으로 확장 -->
+<!-- v3.11 (2026.04.01) : 맛집(26곳)/카페(18곳)/관광스팟(33곳) 영업시간(hours) 추가 — 구글지도 기반 77곳 전수 조사 -->
+<!-- v3.10.1 (2026.04.01) : +숙소 추가 버튼 크기/위치를 맛집탭 스타일(.crud-bar .btn-add)로 변경,
+                            date input 달력 아이콘 color-scheme 다크/라이트 대응 수정 -->
+<!-- v3.10 (2026.04.01) : 숙소 카드에 취소 가능기한(⏰ 오렌지 배지)·결제 예정일(💳 블루 배지) 추가,
+                          숙소 추가 버튼 신설, 숙소 수정/추가 모달 Taiwan 스타일(form-grid-2) 개편 -->
 <!-- v3.9.2 (2026.03.31) : Firebase Realtime DB 백엔드 동기화 연결 (dashboards/france2026, 3초 디바운스, 타임스탬프 충돌해결) -->
 <!-- v3.9.1 (2026.03.31) : KPI 예상경비 카드 + 일자별 경비에 게이지(프로그레스바) 적용, 100% 초과 시 빨간색 표시, 대만 대시보드와 동일 스타일 -->
 <!-- v3.9 (2026.03.31) : KPI 카드 동일 높이(flex stretch) + 모바일 텍스트 크기 조정, 탭 메뉴 좌우 스와이프 1줄 변경 -->
