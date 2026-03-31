@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <!-- Version History (최신순) -->
+<!-- v3.8.1 (2026.03.31) : 모바일 KPI 카드 2열 그리드 적용 (minmax 160px, repeat(2,1fr)) -->
 <!-- v3.8 (2026.03.30) : 맛집 +5(NEARBY) → 26곳, 카페 +9(NEARBY) → 18곳, 관광스팟 탭 신설 35곳 -->
 <!-- v3.7 (2026.03.30) : 목적지별 근처 추천 스팟 추가, 맛집·카페 확장, 일정 설명 보강 -->
 <!-- v3.6 (2026.03.30) : KPI 카드 타이중 레이아웃 적용, CRUD 버튼 콌팩트화, 사용경비 버튼 통일 -->
@@ -618,7 +619,7 @@ document.addEventListener('DOMContentLoaded', function() {
     /* ===== KPI GRID ===== */
     .kpi-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
       gap: 16px;
       margin: 40px auto;
       max-width: 1200px;
@@ -1338,7 +1339,7 @@ document.addEventListener('DOMContentLoaded', function() {
       }
 
       .kpi-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, 1fr);
       }
 
       .list-grid {
@@ -1697,7 +1698,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <!-- FOOTER -->
 <footer>
-  <p>프랑스 여행 대시보드 v3.8 · 2026.03.30 · 환율 기준: 1 EUR ≈ 1,700 KRW</p>
+  <p>프랑스 여행 대시보드 v3.8.1 · 2026.03.31 · 환율 기준: 1 EUR ≈ 1,700 KRW</p>
   <p>모든 데이터는 로컬 저장소에 저장됩니다 · <a href="#" onclick="deleteAllData(); return false;" style="color:var(--negative); text-decoration:none;">전체 데이터 삭제</a></p>
 </footer>
 
