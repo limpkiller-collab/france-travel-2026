@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <!-- Version History (최신순) -->
-<!-- v3.10 (2026.04.01) : 숙소탭 개선 - 취소기한·결제예정일 필드 추가, 숙소 추가 버튼, 수정·추가 모달 Taiwan 스타일 리디자인 -->
 <!-- v3.9.2 (2026.03.31) : Firebase Realtime DB 백엔드 동기화 연결 (dashboards/france2026, 3초 디바운스, 타임스탬프 충돌해결) -->
 <!-- v3.9.1 (2026.03.31) : KPI 예상경비 카드 + 일자별 경비에 게이지(프로그레스바) 적용, 100% 초과 시 빨간색 표시, 대만 대시보드와 동일 스타일 -->
 <!-- v3.9 (2026.03.31) : KPI 카드 동일 높이(flex stretch) + 모바일 텍스트 크기 조정, 탭 메뉴 좌우 스와이프 1줄 변경 -->
@@ -1480,6 +1479,8 @@ document.addEventListener('DOMContentLoaded', function() {
     .form-btn:hover { opacity: 0.9; }
     .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .form-grid-2 .form-label { margin-top: 0; }
+    html.theme-dark .form-input[type="date"] { color-scheme: dark; }
+    html.theme-light .form-input[type="date"] { color-scheme: light; }
     .hotel-info-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 20px; }
     .hotel-info-badge.cancel { background: rgba(245,158,11,0.12); color: #f59e0b; }
     .hotel-info-badge.payment { background: rgba(59,130,246,0.12); color: #3b82f6; }
@@ -1666,6 +1667,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <!-- ===== HOTEL PANEL ===== -->
 <div class="main-panel" id="panel-hotel">
+  <div class="crud-bar">
+    <button class="btn-add" onclick="openHotelAddModal()"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 🏨 숙소 추가</button>
+  </div>
   <div class="hotel-carousel-wrap">
     <div class="hotel-carousel-viewport" id="hotelViewport">
       <div class="hotel-carousel-track" id="hotelTrack"></div>
@@ -1679,12 +1683,6 @@ document.addEventListener('DOMContentLoaded', function() {
       <button class="hotel-nav-btn" id="hotelNext" onclick="hotelSlide(1)" aria-label="다음">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
             </button>
-    </div>
-    <div style="text-align:center;margin-top:16px;">
-      <button onclick="openHotelAddModal()" style="display:inline-flex;align-items:center;gap:8px;padding:10px 22px;border-radius:10px;border:none;background:#3b82f6;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        숙소 추가
-      </button>
     </div>
   </div>
 </div>
