@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <!-- Version History (최신순) -->
+<!-- v3.10 (2026.04.01) : 숙소탭 개선 - 취소기한·결제예정일 필드 추가, 숙소 추가 버튼, 수정·추가 모달 Taiwan 스타일 리디자인 -->
 <!-- v3.9.2 (2026.03.31) : Firebase Realtime DB 백엔드 동기화 연결 (dashboards/france2026, 3초 디바운스, 타임스탬프 충돌해결) -->
 <!-- v3.9.1 (2026.03.31) : KPI 예상경비 카드 + 일자별 경비에 게이지(프로그레스바) 적용, 100% 초과 시 빨간색 표시, 대만 대시보드와 동일 스타일 -->
 <!-- v3.9 (2026.03.31) : KPI 카드 동일 높이(flex stretch) + 모바일 텍스트 크기 조정, 탭 메뉴 좌우 스와이프 1줄 변경 -->
@@ -1477,6 +1478,11 @@ document.addEventListener('DOMContentLoaded', function() {
       cursor: pointer; margin-top: 20px; font-family: inherit;
     }
     .form-btn:hover { opacity: 0.9; }
+    .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-grid-2 .form-label { margin-top: 0; }
+    .hotel-info-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 20px; }
+    .hotel-info-badge.cancel { background: rgba(245,158,11,0.12); color: #f59e0b; }
+    .hotel-info-badge.payment { background: rgba(59,130,246,0.12); color: #3b82f6; }
 
     /* ===== CATEGORY GRID ===== */
     .cat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
@@ -1673,6 +1679,12 @@ document.addEventListener('DOMContentLoaded', function() {
       <button class="hotel-nav-btn" id="hotelNext" onclick="hotelSlide(1)" aria-label="다음">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
             </button>
+    </div>
+    <div style="text-align:center;margin-top:16px;">
+      <button onclick="openHotelAddModal()" style="display:inline-flex;align-items:center;gap:8px;padding:10px 22px;border-radius:10px;border:none;background:#3b82f6;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        숙소 추가
+      </button>
     </div>
   </div>
 </div>
@@ -2046,11 +2058,11 @@ const SPOT_DATA = [
 ];
 
 const HOTEL_DATA = [
-  { name: '마르세유 에어비앤비', subName: '마르세유 시내 · Rue Saint-Ferreol', type: 'Airbnb', typeEmoji: '🏠', checkIn: '2026-06-03', checkOut: '2026-06-05', nights: 2, region: 'marseille', priceKRW: 194480, bookingSite: 'Airbnb', bookingUrl: 'https://www.airbnb.com', mapUrl: 'https://www.google.com/maps/search/Rue+Saint-Ferreol+Marseille' },
-  { name: 'Hôtel Le Relais', subName: '르 를레 · 무스티에생트마리', type: '호텔', typeEmoji: '🏨', checkIn: '2026-06-05', checkOut: '2026-06-06', nights: 1, region: 'provence', priceEUR: 82, bookingSite: 'Booking.com', bookingUrl: 'https://www.booking.com', mapUrl: 'https://maps.app.goo.gl/kJ5t46Wh2vWWygXcA' },
-  { name: 'Saint-Jeannet 에어비앤비', subName: '생자네 · 코트다쥐르 내륙', type: 'Airbnb', typeEmoji: '🏠', checkIn: '2026-06-06', checkOut: '2026-06-08', nights: 2, region: 'cotedazur', priceKRW: 178628, bookingSite: 'Airbnb', bookingUrl: 'https://www.airbnb.com', mapUrl: 'https://www.google.com/maps/search/Saint-Jeannet+France' },
-  { name: '니스 에어비앤비', subName: '니스 구시가지 근처', type: 'Airbnb', typeEmoji: '🏠', checkIn: '2026-06-08', checkOut: '2026-06-10', nights: 2, region: 'nice', priceKRW: 0, bookingSite: 'Airbnb', bookingUrl: 'https://www.airbnb.com', mapUrl: 'https://www.google.com/maps/search/Nice+Old+Town+accommodation' },
-  { name: '파리 에어비앤비', subName: '마레 지구 (Marais)', type: 'Airbnb', typeEmoji: '🏠', checkIn: '2026-06-10', checkOut: '2026-06-13', nights: 3, region: 'paris', priceKRW: 699821, bookingSite: 'Airbnb', bookingUrl: 'https://www.airbnb.com', mapUrl: 'https://www.google.com/maps/search/Le+Marais+Paris+accommodation' }
+  { name: '마르세유 에어비앤비', subName: '마르세유 시내 · Rue Saint-Ferreol', type: 'Airbnb', typeEmoji: '🏠', checkIn: '2026-06-03', checkOut: '2026-06-05', nights: 2, region: 'marseille', priceKRW: 194480, bookingSite: 'Airbnb', bookingUrl: 'https://www.airbnb.com', mapUrl: 'https://www.google.com/maps/search/Rue+Saint-Ferreol+Marseille', cancelDeadline: '', paymentDue: '' },
+  { name: 'Hôtel Le Relais', subName: '르 를레 · 무스티에생트마리', type: '호텔', typeEmoji: '🏨', checkIn: '2026-06-05', checkOut: '2026-06-06', nights: 1, region: 'provence', priceEUR: 82, bookingSite: 'Booking.com', bookingUrl: 'https://www.booking.com', mapUrl: 'https://maps.app.goo.gl/kJ5t46Wh2vWWygXcA', cancelDeadline: '', paymentDue: '' },
+  { name: 'Saint-Jeannet 에어비앤비', subName: '생자네 · 코트다쥐르 내륙', type: 'Airbnb', typeEmoji: '🏠', checkIn: '2026-06-06', checkOut: '2026-06-08', nights: 2, region: 'cotedazur', priceKRW: 178628, bookingSite: 'Airbnb', bookingUrl: 'https://www.airbnb.com', mapUrl: 'https://www.google.com/maps/search/Saint-Jeannet+France', cancelDeadline: '', paymentDue: '' },
+  { name: '니스 에어비앤비', subName: '니스 구시가지 근처', type: 'Airbnb', typeEmoji: '🏠', checkIn: '2026-06-08', checkOut: '2026-06-10', nights: 2, region: 'nice', priceKRW: 0, bookingSite: 'Airbnb', bookingUrl: 'https://www.airbnb.com', mapUrl: 'https://www.google.com/maps/search/Nice+Old+Town+accommodation', cancelDeadline: '', paymentDue: '' },
+  { name: '파리 에어비앤비', subName: '마레 지구 (Marais)', type: 'Airbnb', typeEmoji: '🏠', checkIn: '2026-06-10', checkOut: '2026-06-13', nights: 3, region: 'paris', priceKRW: 699821, bookingSite: 'Airbnb', bookingUrl: 'https://www.airbnb.com', mapUrl: 'https://www.google.com/maps/search/Le+Marais+Paris+accommodation', cancelDeadline: '', paymentDue: '' }
 ];
 
 const BUDGET_DATA = {
@@ -2680,6 +2692,13 @@ function renderHotelPanel() {
     h += '<div class="hotel-info-item"><span class="hotel-info-label">지역</span><span class="hotel-info-value">' + REGIONS[hotel.region].name + '</span></div>';
     h += '<div class="hotel-info-item"><span class="hotel-info-label">숙소 유형</span><span class="hotel-info-value">' + hotel.type + '</span></div>';
     h += '<div class="hotel-info-item"><span class="hotel-info-label">예약 사이트</span><span class="hotel-info-value">' + (hotel.bookingSite || '-') + '</span></div>';
+    // 취소 기한 & 결제 예정일
+    if (hotel.cancelDeadline) {
+      h += '<div class="hotel-info-item"><span class="hotel-info-label">취소 가능 기한</span><span class="hotel-info-value"><span class="hotel-info-badge cancel">⏰ ' + fmtDate(hotel.cancelDeadline) + '</span></span></div>';
+    }
+    if (hotel.paymentDue) {
+      h += '<div class="hotel-info-item"><span class="hotel-info-label">결제 예정일</span><span class="hotel-info-value"><span class="hotel-info-badge payment">💳 ' + fmtDate(hotel.paymentDue) + '</span></span></div>';
+    }
     h += '</div>';
 
     // Price row
@@ -3206,58 +3225,132 @@ document.addEventListener('DOMContentLoaded', function() {
   startFirebaseListener();
 });
 
-// ===== HOTEL EDIT MODAL =====
+// ===== HOTEL MODAL HELPERS =====
+function _buildHotelRegionOptions(selId, selectedVal) {
+  var sel = document.getElementById(selId);
+  if (!sel) return;
+  sel.innerHTML = '';
+  Object.entries(REGIONS).forEach(function(entry) {
+    var opt = document.createElement('option');
+    opt.value = entry[0];
+    opt.textContent = entry[1].emoji + ' ' + entry[1].name;
+    if (entry[0] === selectedVal) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+// ===== HOTEL EDIT MODAL (Taiwan style) =====
 function openHotelEditModal(idx) {
   var hotel = HOTEL_DATA[idx];
   if (!hotel) return;
   var overlay = document.getElementById('modal-hotel-edit');
   if (!overlay) {
-    // Create hotel edit modal dynamically
     overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
     overlay.id = 'modal-hotel-edit';
+    overlay.onclick = function(e) { if (e.target === overlay) closeModal('hotel-edit'); };
     overlay.innerHTML = `
       <div class="modal">
-        <div class="modal-header"><h3>🏨 숙소 수정</h3><button class="modal-close" onclick="closeModal('hotel-edit')">✕</button></div>
-        <div class="modal-body">
-          <label>숙소명</label><input type="text" id="hotelEditName" class="modal-input">
-          <label>부제 (서브네임)</label><input type="text" id="hotelEditSubName" class="modal-input">
-          <label>숙소 유형</label><input type="text" id="hotelEditType" class="modal-input" placeholder="호텔 / Airbnb / 게스트하우스">
-          <label>지역</label>
-          <select id="hotelEditRegion" class="modal-input"></select>
-          <label>체크인</label><input type="date" id="hotelEditCheckIn" class="modal-input">
-          <label>체크아웃</label><input type="date" id="hotelEditCheckOut" class="modal-input">
-          <label>가격 (EUR)</label><input type="number" id="hotelEditPriceEUR" class="modal-input" placeholder="EUR 기준 (없으면 빈칸)">
-          <label>가격 (KRW)</label><input type="number" id="hotelEditPriceKRW" class="modal-input" placeholder="KRW 기준 (없으면 빈칸)">
-          <label>예약 사이트</label><input type="text" id="hotelEditBookingSite" class="modal-input" placeholder="Booking.com / Airbnb">
-          <label>예약 URL</label><input type="text" id="hotelEditBookingUrl" class="modal-input">
-          <label>지도 URL</label><input type="text" id="hotelEditMapUrl" class="modal-input">
-          <button class="modal-submit" onclick="submitHotelEdit()">수정 완료</button>
+        <button class="modal-close" onclick="closeModal('hotel-edit')">&times;</button>
+        <h2>🏨 숙소 수정</h2>
+        <label class="form-label">숙소명</label>
+        <input type="text" class="form-input" id="hotelEditName" placeholder="숙소 이름">
+        <label class="form-label">부제 (위치/설명)</label>
+        <input type="text" class="form-input" id="hotelEditSubName" placeholder="예: 마레 지구 · 중심부">
+        <div class="form-grid-2">
+          <div>
+            <label class="form-label">유형</label>
+            <select class="form-input" id="hotelEditType">
+              <option value="호텔">호텔</option>
+              <option value="Airbnb">Airbnb</option>
+              <option value="게스트하우스">게스트하우스</option>
+              <option value="호스텔">호스텔</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">지역</label>
+            <select class="form-input" id="hotelEditRegion"></select>
+          </div>
         </div>
+        <div class="form-grid-2">
+          <div>
+            <label class="form-label">체크인</label>
+            <input type="date" class="form-input" id="hotelEditCheckIn">
+          </div>
+          <div>
+            <label class="form-label">체크아웃</label>
+            <input type="date" class="form-input" id="hotelEditCheckOut">
+          </div>
+        </div>
+        <div class="form-grid-2">
+          <div>
+            <label class="form-label">가격 (EUR)</label>
+            <input type="number" class="form-input" id="hotelEditPriceEUR" placeholder="없으면 빈칸">
+          </div>
+          <div>
+            <label class="form-label">가격 (KRW)</label>
+            <input type="number" class="form-input" id="hotelEditPriceKRW" placeholder="없으면 빈칸">
+          </div>
+        </div>
+        <div class="form-grid-2">
+          <div>
+            <label class="form-label">예약 사이트</label>
+            <select class="form-input" id="hotelEditBookingSite">
+              <option value="Airbnb">Airbnb</option>
+              <option value="Booking.com">Booking.com</option>
+              <option value="Agoda">Agoda</option>
+              <option value="기타">기타</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">취소 가능 기한</label>
+            <input type="date" class="form-input" id="hotelEditCancelDeadline">
+          </div>
+        </div>
+        <div class="form-grid-2">
+          <div>
+            <label class="form-label">결제 예정일</label>
+            <input type="date" class="form-input" id="hotelEditPaymentDue">
+          </div>
+          <div>
+            <label class="form-label">구글지도 URL</label>
+            <input type="text" class="form-input" id="hotelEditMapUrl" placeholder="https://...">
+          </div>
+        </div>
+        <label class="form-label">예약 URL</label>
+        <input type="text" class="form-input" id="hotelEditBookingUrl" placeholder="https://...">
+        <button class="form-btn" onclick="submitHotelEdit()">수정 완료</button>
       </div>
     `;
     document.body.appendChild(overlay);
-    // Populate region select
-    var sel = document.getElementById('hotelEditRegion');
-    Object.entries(REGIONS).forEach(function(entry) {
-      var opt = document.createElement('option');
-      opt.value = entry[0];
-      opt.textContent = entry[1].emoji + ' ' + entry[1].name;
-      sel.appendChild(opt);
-    });
   }
-  // Fill form
+  // Populate selects
+  _buildHotelRegionOptions('hotelEditRegion', hotel.region);
+  // Set type select
+  var typeEl = document.getElementById('hotelEditType');
+  var typeFound = false;
+  for (var i = 0; i < typeEl.options.length; i++) {
+    if (typeEl.options[i].value === hotel.type) { typeEl.selectedIndex = i; typeFound = true; break; }
+  }
+  if (!typeFound) { var o = document.createElement('option'); o.value = hotel.type; o.textContent = hotel.type; typeEl.appendChild(o); typeEl.value = hotel.type; }
+  // Set booking site
+  var bsEl = document.getElementById('hotelEditBookingSite');
+  var bsFound = false;
+  for (var j = 0; j < bsEl.options.length; j++) {
+    if (bsEl.options[j].value === hotel.bookingSite) { bsEl.selectedIndex = j; bsFound = true; break; }
+  }
+  if (!bsFound && hotel.bookingSite) { var bo = document.createElement('option'); bo.value = hotel.bookingSite; bo.textContent = hotel.bookingSite; bsEl.appendChild(bo); bsEl.value = hotel.bookingSite; }
+  // Fill fields
   document.getElementById('hotelEditName').value = hotel.name || '';
   document.getElementById('hotelEditSubName').value = hotel.subName || '';
-  document.getElementById('hotelEditType').value = hotel.type || '';
-  document.getElementById('hotelEditRegion').value = hotel.region || '';
   document.getElementById('hotelEditCheckIn').value = hotel.checkIn || '';
   document.getElementById('hotelEditCheckOut').value = hotel.checkOut || '';
   document.getElementById('hotelEditPriceEUR').value = hotel.priceEUR || '';
   document.getElementById('hotelEditPriceKRW').value = hotel.priceKRW || '';
-  document.getElementById('hotelEditBookingSite').value = hotel.bookingSite || '';
-  document.getElementById('hotelEditBookingUrl').value = hotel.bookingUrl || '';
+  document.getElementById('hotelEditCancelDeadline').value = hotel.cancelDeadline || '';
+  document.getElementById('hotelEditPaymentDue').value = hotel.paymentDue || '';
   document.getElementById('hotelEditMapUrl').value = hotel.mapUrl || '';
+  document.getElementById('hotelEditBookingUrl').value = hotel.bookingUrl || '';
   overlay.dataset.editIdx = idx;
   overlay.classList.add('open');
   document.body.style.overflow = 'hidden';
@@ -3268,38 +3361,152 @@ function submitHotelEdit() {
   var idx = parseInt(overlay.dataset.editIdx);
   var hotel = HOTEL_DATA[idx];
   if (!hotel) return;
-
   hotel.name = document.getElementById('hotelEditName').value;
   hotel.subName = document.getElementById('hotelEditSubName').value;
   hotel.type = document.getElementById('hotelEditType').value;
   hotel.region = document.getElementById('hotelEditRegion').value;
   hotel.checkIn = document.getElementById('hotelEditCheckIn').value;
   hotel.checkOut = document.getElementById('hotelEditCheckOut').value;
-
   var priceEUR = parseFloat(document.getElementById('hotelEditPriceEUR').value);
   var priceKRW = parseInt(document.getElementById('hotelEditPriceKRW').value);
-
-  if (priceEUR > 0) {
-    hotel.priceEUR = priceEUR;
-    delete hotel.priceKRW;
-  } else if (priceKRW > 0) {
-    hotel.priceKRW = priceKRW;
-    delete hotel.priceEUR;
-  }
-
-  // Calculate nights
-  var ci = new Date(hotel.checkIn);
-  var co = new Date(hotel.checkOut);
+  if (priceEUR > 0) { hotel.priceEUR = priceEUR; delete hotel.priceKRW; }
+  else if (priceKRW > 0) { hotel.priceKRW = priceKRW; delete hotel.priceEUR; }
+  var ci = new Date(hotel.checkIn); var co = new Date(hotel.checkOut);
   hotel.nights = Math.round((co - ci) / (1000 * 60 * 60 * 24));
-
   hotel.bookingSite = document.getElementById('hotelEditBookingSite').value;
   hotel.bookingUrl = document.getElementById('hotelEditBookingUrl').value;
   hotel.mapUrl = document.getElementById('hotelEditMapUrl').value;
+  hotel.cancelDeadline = document.getElementById('hotelEditCancelDeadline').value;
+  hotel.paymentDue = document.getElementById('hotelEditPaymentDue').value;
+  renderHotelPanel(); addMoreButtons(); saveToStorage(); closeModal('hotel-edit');
+}
 
-  renderHotelPanel();
-  addMoreButtons();
-  saveToStorage();
-  closeModal('hotel-edit');
+// ===== HOTEL ADD MODAL (Taiwan style) =====
+function openHotelAddModal() {
+  var overlay = document.getElementById('modal-hotel-add');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.id = 'modal-hotel-add';
+    overlay.onclick = function(e) { if (e.target === overlay) closeModal('hotel-add'); };
+    overlay.innerHTML = `
+      <div class="modal">
+        <button class="modal-close" onclick="closeModal('hotel-add')">&times;</button>
+        <h2>🏨 숙소 추가</h2>
+        <label class="form-label">숙소명</label>
+        <input type="text" class="form-input" id="hotelAddName" placeholder="숙소 이름">
+        <label class="form-label">부제 (위치/설명)</label>
+        <input type="text" class="form-input" id="hotelAddSubName" placeholder="예: 마레 지구 · 중심부">
+        <div class="form-grid-2">
+          <div>
+            <label class="form-label">유형</label>
+            <select class="form-input" id="hotelAddType">
+              <option value="호텔">호텔</option>
+              <option value="Airbnb">Airbnb</option>
+              <option value="게스트하우스">게스트하우스</option>
+              <option value="호스텔">호스텔</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">지역</label>
+            <select class="form-input" id="hotelAddRegion"></select>
+          </div>
+        </div>
+        <div class="form-grid-2">
+          <div>
+            <label class="form-label">체크인</label>
+            <input type="date" class="form-input" id="hotelAddCheckIn">
+          </div>
+          <div>
+            <label class="form-label">체크아웃</label>
+            <input type="date" class="form-input" id="hotelAddCheckOut">
+          </div>
+        </div>
+        <div class="form-grid-2">
+          <div>
+            <label class="form-label">가격 (EUR)</label>
+            <input type="number" class="form-input" id="hotelAddPriceEUR" placeholder="없으면 빈칸">
+          </div>
+          <div>
+            <label class="form-label">가격 (KRW)</label>
+            <input type="number" class="form-input" id="hotelAddPriceKRW" placeholder="없으면 빈칸">
+          </div>
+        </div>
+        <div class="form-grid-2">
+          <div>
+            <label class="form-label">예약 사이트</label>
+            <select class="form-input" id="hotelAddBookingSite">
+              <option value="Airbnb">Airbnb</option>
+              <option value="Booking.com">Booking.com</option>
+              <option value="Agoda">Agoda</option>
+              <option value="기타">기타</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">취소 가능 기한</label>
+            <input type="date" class="form-input" id="hotelAddCancelDeadline">
+          </div>
+        </div>
+        <div class="form-grid-2">
+          <div>
+            <label class="form-label">결제 예정일</label>
+            <input type="date" class="form-input" id="hotelAddPaymentDue">
+          </div>
+          <div>
+            <label class="form-label">구글지도 URL</label>
+            <input type="text" class="form-input" id="hotelAddMapUrl" placeholder="https://...">
+          </div>
+        </div>
+        <label class="form-label">예약 URL</label>
+        <input type="text" class="form-input" id="hotelAddBookingUrl" placeholder="https://...">
+        <button class="form-btn" onclick="submitHotelAdd()">추가하기</button>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+  }
+  _buildHotelRegionOptions('hotelAddRegion', '');
+  // Reset fields
+  ['hotelAddName','hotelAddSubName','hotelAddCheckIn','hotelAddCheckOut',
+   'hotelAddPriceEUR','hotelAddPriceKRW','hotelAddCancelDeadline','hotelAddPaymentDue','hotelAddMapUrl','hotelAddBookingUrl']
+    .forEach(function(id) { document.getElementById(id).value = ''; });
+  overlay.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function submitHotelAdd() {
+  var name = document.getElementById('hotelAddName').value.trim();
+  if (!name) { alert('숙소명을 입력해주세요.'); return; }
+  var checkIn = document.getElementById('hotelAddCheckIn').value;
+  var checkOut = document.getElementById('hotelAddCheckOut').value;
+  var nights = 0;
+  if (checkIn && checkOut) {
+    nights = Math.round((new Date(checkOut) - new Date(checkIn)) / (1000 * 60 * 60 * 24));
+  }
+  var type = document.getElementById('hotelAddType').value;
+  var typeEmojiMap = { '호텔': '🏨', 'Airbnb': '🏠', '게스트하우스': '🏡', '호스텔': '🛏️' };
+  var priceEUR = parseFloat(document.getElementById('hotelAddPriceEUR').value);
+  var priceKRW = parseInt(document.getElementById('hotelAddPriceKRW').value);
+  var newHotel = {
+    name: name,
+    subName: document.getElementById('hotelAddSubName').value,
+    type: type,
+    typeEmoji: typeEmojiMap[type] || '🏨',
+    checkIn: checkIn,
+    checkOut: checkOut,
+    nights: nights,
+    region: document.getElementById('hotelAddRegion').value,
+    bookingSite: document.getElementById('hotelAddBookingSite').value,
+    bookingUrl: document.getElementById('hotelAddBookingUrl').value,
+    mapUrl: document.getElementById('hotelAddMapUrl').value,
+    cancelDeadline: document.getElementById('hotelAddCancelDeadline').value,
+    paymentDue: document.getElementById('hotelAddPaymentDue').value
+  };
+  if (priceEUR > 0) newHotel.priceEUR = priceEUR;
+  else if (priceKRW > 0) newHotel.priceKRW = priceKRW;
+  else newHotel.priceKRW = 0;
+  HOTEL_DATA.push(newHotel);
+  hotelIndex = HOTEL_DATA.length - 1;
+  renderHotelPanel(); addMoreButtons(); saveToStorage(); closeModal('hotel-add');
 }
 
 // ===== MODAL MANAGEMENT =====
