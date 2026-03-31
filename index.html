@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <!-- Version History (최신순) -->
+<!-- v3.9.1 (2026.03.31) : KPI 예상경비 카드 + 일자별 경비에 게이지(프로그레스바) 적용, 100% 초과 시 빨간색 표시, 대만 대시보드와 동일 스타일 -->
 <!-- v3.9 (2026.03.31) : KPI 카드 동일 높이(flex stretch) + 모바일 텍스트 크기 조정, 탭 메뉴 좌우 스와이프 1줄 변경 -->
 <!-- v3.8.1 (2026.03.31) : 모바일 KPI 카드 2열 그리드 적용 (minmax 160px, repeat(2,1fr)) -->
 <!-- v3.8 (2026.03.30) : 맛집 +5(NEARBY) → 26곳, 카페 +9(NEARBY) → 18곳, 관광스팟 탭 신설 35곳 -->
@@ -829,8 +830,8 @@ document.addEventListener('DOMContentLoaded', function() {
       font-size: 13px; color: var(--text-secondary); flex-wrap: wrap;
     }
     .day-expense-card .expense-value { font-weight: 700; color: var(--text); }
-    .expense-progress { flex: 1; min-width: 120px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
-    .expense-progress-bar { height: 100%; background: #3b82f6; border-radius: 3px; width: 0; transition: width 0.3s; }
+    .expense-progress { flex: 1; min-width: 80px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+    .expense-progress-bar { height: 100%; background: var(--positive); border-radius: 3px; width: 0; transition: width 0.4s ease; }
     /* ===== TIMELINE (Taichung style) ===== */
     .timeline { position: relative; padding-left: 32px; }
     .timeline::before { content: ''; position: absolute; left: 11px; top: 8px; bottom: 8px; width: 2px; background: var(--border); border-radius: 1px; }
@@ -1224,18 +1225,18 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     .progress-bar-mini {
-      height: 4px;
-      background: var(--bg);
-      border-radius: 2px;
+      height: 6px;
+      background: var(--border);
+      border-radius: 3px;
       overflow: hidden;
-      margin-top: 4px;
+      margin-top: 6px;
     }
 
     .progress-bar-mini div {
       height: 100%;
-      background: linear-gradient(90deg, #3b82f6, #8b5cf6);
-      border-radius: 2px;
-      transition: width 0.4s ease-out;
+      background: var(--positive);
+      border-radius: 3px;
+      transition: width 0.4s ease;
     }
 
     .expense-filters {
@@ -1718,7 +1719,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <!-- FOOTER -->
 <footer>
-  <p>프랑스 여행 대시보드 v3.9 · 2026.03.31 · 환율 기준: 1 EUR ≈ 1,700 KRW</p>
+  <p>프랑스 여행 대시보드 v3.9.1 · 2026.03.31 · 환율 기준: 1 EUR ≈ 1,700 KRW</p>
   <p>모든 데이터는 로컬 저장소에 저장됩니다 · <a href="#" onclick="deleteAllData(); return false;" style="color:var(--negative); text-decoration:none;">전체 데이터 삭제</a></p>
 </footer>
 
@@ -2919,15 +2920,58 @@ function updateExpenseUI() {
   const budgetEUR = 980.24;
   const budgetKRW = budgetEUR * EUR_TO_KRW;
   const percent = Math.round((totalKRW / budgetKRW) * 100);
+  const overBudget = percent > 100;
 
   document.getElementById('budgetPercent').textContent = `${percent}%`;
-  document.getElementById('budgetProgressBar').style.width = `${Math.min(percent, 100)}%`;
+  var budgetBar = document.getElementById('budgetProgressBar');
+  budgetBar.style.width = `${Math.min(percent, 100)}%`;
+  budgetBar.style.background = overBudget ? 'var(--negative)' : 'var(--positive)';
 
   // KPI update
-  document.getElementById('kpiActualVal').textContent = `€${totalEUR.toFixed(2)}`;
-  document.getElementById('kpiActualKrw').textContent = `(₩${Math.round(totalKRW).toLocaleString()})`;
-  document.getElementById('kpiExpenseBar').style.width = `${Math.min(percent, 100)}%`;
-  document.getElementById('kpiExpensePercent').textContent = `예산 대비 ${percent}%`;
+  var kpiActualVal = document.getElementById('kpiActualVal');
+  var kpiActualKrw = document.getElementById('kpiActualKrw');
+  var kpiExpenseBar = document.getElementById('kpiExpenseBar');
+  var kpiExpensePercent = document.getElementById('kpiExpensePercent');
+  if (kpiActualVal) {
+    kpiActualVal.textContent = `€${totalEUR.toFixed(2)}`;
+    kpiActualVal.style.color = overBudget ? 'var(--negative)' : 'var(--positive)';
+    kpiActualKrw.textContent = `(₩${Math.round(totalKRW).toLocaleString()})`;
+    kpiExpenseBar.style.width = `${Math.min(percent, 100)}%`;
+    kpiExpenseBar.style.background = overBudget ? 'var(--negative)' : 'var(--positive)';
+    kpiExpensePercent.textContent = `예산 대비 ${percent}%`;
+    kpiExpensePercent.style.color = overBudget ? 'var(--negative)' : 'var(--text-secondary)';
+  }
+
+  // Update day expense cards
+  DAYS.forEach(function(day) {
+    var dayExpenses = expenses.filter(function(e) { return String(e.day) === String(day.num); });
+    var dayEUR = dayExpenses.filter(function(e) { return e.currency === 'EUR'; }).reduce(function(s, e) { return s + e.amount; }, 0);
+    var dayKRW = dayExpenses.reduce(function(s, e) { return s + (e.currency === 'EUR' ? e.amount * EUR_TO_KRW : e.amount); }, 0);
+
+    var dayActualEl = document.getElementById('dayActual' + day.num);
+    var dayBarEl = document.getElementById('dayBar' + day.num);
+
+    if (dayActualEl) {
+      dayActualEl.textContent = dayEUR.toFixed(0) + ' EUR (₩' + Math.round(dayKRW).toLocaleString() + ')';
+    }
+
+    if (dayBarEl) {
+      // Calculate day budget from SCHEDULE_DATA
+      var daySchedule = SCHEDULE_DATA.filter(function(s) { return s.day === day.num; });
+      var dayBudget = 0;
+      daySchedule.forEach(function(s) {
+        if (s.cost) {
+          dayBudget += (s.currency === 'EUR') ? s.cost : (s.currency === 'KRW' ? s.cost / EUR_TO_KRW : s.cost);
+        }
+      });
+
+      if (dayBudget > 0) {
+        var dayPercent = Math.round((dayEUR / dayBudget) * 100);
+        dayBarEl.style.width = Math.min(dayPercent, 100) + '%';
+        dayBarEl.style.background = dayPercent > 100 ? 'var(--negative)' : 'var(--positive)';
+      }
+    }
+  });
 
   updateExpenseTable();
 }
