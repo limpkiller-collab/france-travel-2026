@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <!-- Version History (최신순) -->
+<!-- v3.9 (2026.03.31) : KPI 카드 동일 높이(flex stretch) + 모바일 텍스트 크기 조정, 탭 메뉴 좌우 스와이프 1줄 변경 -->
 <!-- v3.8.1 (2026.03.31) : 모바일 KPI 카드 2열 그리드 적용 (minmax 160px, repeat(2,1fr)) -->
 <!-- v3.8 (2026.03.30) : 맛집 +5(NEARBY) → 26곳, 카페 +9(NEARBY) → 18곳, 관광스팟 탭 신설 35곳 -->
 <!-- v3.7 (2026.03.30) : 목적지별 근처 추천 스팟 추가, 맛집·카페 확장, 일정 설명 보강 -->
@@ -624,6 +625,7 @@ document.addEventListener('DOMContentLoaded', function() {
       margin: 40px auto;
       max-width: 1200px;
       padding: 0 20px;
+      align-items: stretch;
     }
 
     .kpi-card {
@@ -634,6 +636,8 @@ document.addEventListener('DOMContentLoaded', function() {
       transition: box-shadow 0.2s;
       animation: fadeInUp 0.6s ease-out forwards;
       opacity: 0;
+      display: flex;
+      flex-direction: column;
     }
     .kpi-card:hover { box-shadow: 0 0 0 1px var(--border), 0 8px 16px rgba(0,0,0,0.08); }
 
@@ -668,14 +672,20 @@ document.addEventListener('DOMContentLoaded', function() {
     /* ===== MAIN TABS ===== */
     .main-tabs {
       display: flex;
-      gap: 8px;
+      gap: 0;
       background: var(--surface);
       border-bottom: 1px solid var(--border);
       padding: 0;
       margin: 40px 0 0 0;
       overflow-x: auto;
+      overflow-y: hidden;
       scroll-behavior: smooth;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .main-tabs::-webkit-scrollbar {
+      display: none;
     }
 
     .main-tab {
@@ -1340,6 +1350,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
       .kpi-grid {
         grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+      }
+      .kpi-card {
+        padding: 14px;
+      }
+      .kpi-value {
+        font-size: 18px;
+      }
+      .kpi-sub {
+        font-size: 11px;
       }
 
       .list-grid {
@@ -1698,7 +1718,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <!-- FOOTER -->
 <footer>
-  <p>프랑스 여행 대시보드 v3.8.1 · 2026.03.31 · 환율 기준: 1 EUR ≈ 1,700 KRW</p>
+  <p>프랑스 여행 대시보드 v3.9 · 2026.03.31 · 환율 기준: 1 EUR ≈ 1,700 KRW</p>
   <p>모든 데이터는 로컬 저장소에 저장됩니다 · <a href="#" onclick="deleteAllData(); return false;" style="color:var(--negative); text-decoration:none;">전체 데이터 삭제</a></p>
 </footer>
 
