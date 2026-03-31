@@ -177,6 +177,7 @@ function submitNewFood() {
   FOOD_DATA.push({ name, region, desc, reco, location, price, badge: 'badge-local' });
   renderFoodPanel();
   addMoreButtons();
+  saveToStorage();
   closeModal('food');
 
   // Reset
@@ -200,6 +201,7 @@ function submitNewCafe() {
   CAFE_DATA.push({ name, region, desc, reco, location, price, badge: 'badge-cafe-type' });
   renderCafePanel();
   addMoreButtons();
+  saveToStorage();
   closeModal('cafe');
 
   // Reset
@@ -3095,6 +3097,11 @@ document.getElementById('importFileInput').addEventListener('change', function(e
 function saveToStorage() {
   const data = {
     expenses,
+    FOOD_DATA,
+    CAFE_DATA,
+    SPOT_DATA,
+    HOTEL_DATA,
+    SCHEDULE_DATA,
     theme: document.documentElement.classList.contains('theme-dark') ? 'dark' : 'light'
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -3107,6 +3114,11 @@ function loadFromStorage() {
     try {
       const data = JSON.parse(stored);
       expenses = data.expenses || [];
+      if (data.FOOD_DATA)     { FOOD_DATA.length = 0;     data.FOOD_DATA.forEach(x => FOOD_DATA.push(x)); }
+      if (data.CAFE_DATA)     { CAFE_DATA.length = 0;     data.CAFE_DATA.forEach(x => CAFE_DATA.push(x)); }
+      if (data.SPOT_DATA)     { SPOT_DATA.length = 0;     data.SPOT_DATA.forEach(x => SPOT_DATA.push(x)); }
+      if (data.HOTEL_DATA)    { HOTEL_DATA.length = 0;    data.HOTEL_DATA.forEach(x => HOTEL_DATA.push(x)); }
+      if (data.SCHEDULE_DATA) { SCHEDULE_DATA.length = 0; data.SCHEDULE_DATA.forEach(x => SCHEDULE_DATA.push(x)); }
       if (data.theme) {
         document.documentElement.classList.toggle('theme-dark', data.theme === 'dark');
         document.documentElement.classList.toggle('theme-light', data.theme === 'light');
@@ -3161,6 +3173,11 @@ function pushToFirebase() {
   if (_isSyncingFromRemote) return;
   var payload = {
     expenses: expenses,
+    FOOD_DATA: FOOD_DATA,
+    CAFE_DATA: CAFE_DATA,
+    SPOT_DATA: SPOT_DATA,
+    HOTEL_DATA: HOTEL_DATA,
+    SCHEDULE_DATA: SCHEDULE_DATA,
     _ts: Date.now(),
     _version: STORAGE_KEY
   };
@@ -3179,7 +3196,13 @@ function pushToFirebase() {
 }
 
 function refreshAllUI() {
+  renderFoodPanel();
+  renderCafePanel();
+  renderSpotPanel();
+  renderHotelCarousel();
+  renderSchedule();
   updateExpenseUI();
+  addMoreButtons();
 }
 
 function startFirebaseListener() {
@@ -3193,9 +3216,14 @@ function startFirebaseListener() {
     if (remote._ts > _lastSyncTime) {
       _isSyncingFromRemote = true;
       expenses = remote.expenses || [];
+      if (remote.FOOD_DATA)     { FOOD_DATA.length = 0;     remote.FOOD_DATA.forEach(x => FOOD_DATA.push(x)); }
+      if (remote.CAFE_DATA)     { CAFE_DATA.length = 0;     remote.CAFE_DATA.forEach(x => CAFE_DATA.push(x)); }
+      if (remote.SPOT_DATA)     { SPOT_DATA.length = 0;     remote.SPOT_DATA.forEach(x => SPOT_DATA.push(x)); }
+      if (remote.HOTEL_DATA)    { HOTEL_DATA.length = 0;    remote.HOTEL_DATA.forEach(x => HOTEL_DATA.push(x)); }
+      if (remote.SCHEDULE_DATA) { SCHEDULE_DATA.length = 0; remote.SCHEDULE_DATA.forEach(x => SCHEDULE_DATA.push(x)); }
       _lastSyncTime = remote._ts;
       // Sync localStorage
-      var lsData = { expenses: expenses };
+      var lsData = { expenses, FOOD_DATA, CAFE_DATA, SPOT_DATA, HOTEL_DATA, SCHEDULE_DATA };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(lsData));
       refreshAllUI();
       setSyncStatus('ok', '☁️ 최신');
@@ -3641,6 +3669,7 @@ function submitNewFood() {
   FOOD_DATA.push({ name, region, desc, reco, location, price, badge: 'badge-local' });
   renderFoodPanel();
   addMoreButtons();
+  saveToStorage();
   closeModal('food');
 
   // Reset
@@ -3664,6 +3693,7 @@ function submitNewCafe() {
   CAFE_DATA.push({ name, region, desc, reco, location, price, badge: 'badge-cafe-type' });
   renderCafePanel();
   addMoreButtons();
+  saveToStorage();
   closeModal('cafe');
 
   // Reset
