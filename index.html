@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <!-- Version History (최신순) -->
+<!-- v3.9.2 (2026.03.31) : Firebase Realtime DB 백엔드 동기화 연결 (dashboards/france2026, 3초 디바운스, 타임스탬프 충돌해결) -->
 <!-- v3.9.1 (2026.03.31) : KPI 예상경비 카드 + 일자별 경비에 게이지(프로그레스바) 적용, 100% 초과 시 빨간색 표시, 대만 대시보드와 동일 스타일 -->
 <!-- v3.9 (2026.03.31) : KPI 카드 동일 높이(flex stretch) + 모바일 텍스트 크기 조정, 탭 메뉴 좌우 스와이프 1줄 변경 -->
 <!-- v3.8.1 (2026.03.31) : 모바일 KPI 카드 2열 그리드 적용 (minmax 160px, repeat(2,1fr)) -->
@@ -27,6 +28,25 @@
 
   <!-- html-to-image CDN -->
   <script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+
+  <!-- Firebase SDK compat -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+  <script>
+    var firebaseConfig = {
+      apiKey: "AIzaSyCJbue9jFzeUTWImTm1zbFQ6V3TDZp1i-0",
+      authDomain: "travel-dashboard-sync.firebaseapp.com",
+      databaseURL: "https://travel-dashboard-sync-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "travel-dashboard-sync",
+      storageBucket: "travel-dashboard-sync.firebasestorage.app",
+      messagingSenderId: "501772785879",
+      appId: "1:501772785879:web:f66a2a10911d16454d3892"
+    };
+    firebase.initializeApp(firebaseConfig);
+    var fbDB = firebase.database();
+    var FB_REF = 'dashboards/france2026';
+  </script>
+
 <script>
 // ===== MODAL MANAGEMENT =====
 function openModal(name) {
@@ -1520,10 +1540,13 @@ document.addEventListener('DOMContentLoaded', function() {
 <body>
 
 <!-- SYNC INDICATOR -->
-<div style="position:fixed;top:12px;right:72px;z-index:1000;display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:12px;color:var(--text-secondary);cursor:pointer;backdrop-filter:blur(8px);" id="syncIndicator">
+<div style="position:fixed;top:12px;right:72px;z-index:1000;display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:12px;color:var(--text-secondary);cursor:pointer;backdrop-filter:blur(8px);" id="syncIndicator" onclick="manualSync()" title="클릭하여 수동 동기화">
   <span style="width:8px;height:8px;border-radius:50%;background:var(--positive);display:inline-block;" id="syncDot"></span>
-  <span id="syncLabel">최신</span>
+  <span id="syncLabel">☁️ 최신</span>
 </div>
+
+<!-- SYNC TOAST -->
+<div id="syncToast" style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:rgba(0,0,0,0.8);color:#fff;padding:10px 20px;border-radius:20px;font-size:13px;z-index:9999;transition:transform 0.3s ease;pointer-events:none;"></div>
 
 <!-- MENU (FIXED) -->
 <div class="viz-menu">
@@ -1532,6 +1555,8 @@ document.addEventListener('DOMContentLoaded', function() {
     <button onclick="cycleTheme()">🌙 테마 토글</button>
     <button onclick="downloadImage()">📸 PNG 다운로드</button>
     <button onclick="window.print()">🖨️ 인쇄 / PDF</button>
+    <div></div>
+    <button onclick="manualSync();toggleMenu()">☁️ 클라우드 동기화</button>
     <div></div>
     <button onclick="exportData()">📤 데이터 내보내기</button>
     <button onclick="importFileClick()">📥 데이터 불러오기</button>
@@ -3051,6 +3076,7 @@ function saveToStorage() {
     theme: document.documentElement.classList.contains('theme-dark') ? 'dark' : 'light'
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  scheduleSyncToFirebase();
 }
 
 function loadFromStorage() {
@@ -3077,6 +3103,108 @@ function deleteAllData() {
     alert('모든 데이터가 삭제되었습니다.');
   }
 }
+
+// ===== FIREBASE SYNC =====
+var _syncTimer = null;
+var _isSyncingFromRemote = false;
+var _lastSyncTime = 0;
+
+function setSyncStatus(state, text) {
+  var dot = document.getElementById('syncDot');
+  var label = document.getElementById('syncLabel');
+  if (!dot || !label) return;
+  var colors = { ok: 'var(--positive)', syncing: '#f59e0b', error: 'var(--negative)', offline: '#6b7280' };
+  dot.style.background = colors[state] || colors.ok;
+  label.textContent = text;
+}
+
+function showSyncToast(msg) {
+  var toast = document.getElementById('syncToast');
+  if (!toast) return;
+  toast.textContent = msg;
+  toast.style.transform = 'translateX(-50%) translateY(0)';
+  setTimeout(function() {
+    toast.style.transform = 'translateX(-50%) translateY(80px)';
+  }, 2500);
+}
+
+function scheduleSyncToFirebase() {
+  if (_isSyncingFromRemote) return;
+  setSyncStatus('syncing', '☁️ 동기화 중...');
+  clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(pushToFirebase, 3000);
+}
+
+function pushToFirebase() {
+  if (_isSyncingFromRemote) return;
+  var payload = {
+    expenses: expenses,
+    _ts: Date.now(),
+    _version: STORAGE_KEY
+  };
+  setSyncStatus('syncing', '☁️ 저장 중...');
+  fbDB.ref(FB_REF).set(payload)
+    .then(function() {
+      _lastSyncTime = payload._ts;
+      setSyncStatus('ok', '☁️ 최신');
+      showSyncToast('☁️ 클라우드에 저장되었습니다');
+    })
+    .catch(function(err) {
+      setSyncStatus('error', '⚠️ 오류');
+      showSyncToast('동기화 오류: ' + err.message);
+      console.error('Firebase push error:', err);
+    });
+}
+
+function refreshAllUI() {
+  updateExpenseUI();
+}
+
+function startFirebaseListener() {
+  setSyncStatus('syncing', '☁️ 연결 중...');
+  fbDB.ref(FB_REF).on('value', function(snapshot) {
+    var remote = snapshot.val();
+    if (!remote || !remote._ts) {
+      setSyncStatus('ok', '☁️ 최신');
+      return;
+    }
+    if (remote._ts > _lastSyncTime) {
+      _isSyncingFromRemote = true;
+      expenses = remote.expenses || [];
+      _lastSyncTime = remote._ts;
+      // Sync localStorage
+      var lsData = { expenses: expenses };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(lsData));
+      refreshAllUI();
+      setSyncStatus('ok', '☁️ 최신');
+      showSyncToast('☁️ 최신 데이터를 불러왔습니다');
+      _isSyncingFromRemote = false;
+    } else {
+      setSyncStatus('ok', '☁️ 최신');
+    }
+  }, function(err) {
+    setSyncStatus('error', '⚠️ 연결 오류');
+    console.error('Firebase listener error:', err);
+  });
+}
+
+function manualSync() {
+  pushToFirebase();
+}
+
+// 온라인/오프라인 감지
+window.addEventListener('online', function() {
+  setSyncStatus('syncing', '☁️ 재연결...');
+  startFirebaseListener();
+});
+window.addEventListener('offline', function() {
+  setSyncStatus('offline', '📵 오프라인');
+});
+
+// Firebase 리스너 시작 (DOMContentLoaded 이후)
+document.addEventListener('DOMContentLoaded', function() {
+  startFirebaseListener();
+});
 
 // ===== HOTEL EDIT MODAL =====
 function openHotelEditModal(idx) {
