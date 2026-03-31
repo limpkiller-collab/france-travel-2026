@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <!-- Version History (최신순) -->
+<!-- v3.12.1 (2026.04.01) : [버그수정] submitNewFood/submitNewCafe 중복 함수가 JS hoisting으로 구버전 우선 적용 → 수정 시 신규 추가되고 subName·hours·mapUrl·inSchedule 필드 누락 문제 수정 -->
 <!-- v3.12 (2026.04.01) : 맛집/카페 모달 필드 확장(subName·배지·영업시간·구글지도URL·일정연동), 관광스팟 추가/수정 모달 신규, 맛집/카페/관광스팟 수정 기능 추가 -->
 <!-- v3.11.3 (2026.04.01) : [버그수정] showConfirm 내 closeConfirm() 호출 순서 오류로 _confirmCallback이 null되어 모든 삭제 확인 콜백 미실행 수정 -->
 <!-- v3.11.2 (2026.04.01) : [버그수정] 맛집/카페/관광스팟 삭제 시 DATA 배열 splice + saveToStorage 호출 누락 수정 -->
@@ -3849,51 +3850,63 @@ function submitNewExpense() {
 
 // ===== FOOD/CAFE CRUD =====
 function submitNewFood() {
-  var name = document.getElementById('foodName').value;
-  var region = document.getElementById('foodRegion').value;
-  var desc = document.getElementById('foodDesc').value;
-  var reco = document.getElementById('foodReco').value;
-  var location = document.getElementById('foodLocation').value;
-  var price = parseFloat(document.getElementById('foodPrice').value) || 15;
-
+  var name = document.getElementById('foodName').value.trim();
   if (!name) { alert('이름을 입력해주세요.'); return; }
+  var item = {
+    name: name,
+    region: document.getElementById('foodRegion').value,
+    badge: document.getElementById('foodBadge').value,
+    desc: document.getElementById('foodDesc').value.trim(),
+    reco: document.getElementById('foodReco').value.trim(),
+    location: document.getElementById('foodLocation').value.trim(),
+    price: parseFloat(document.getElementById('foodPrice').value) || 15
+  };
+  var sub = document.getElementById('foodSubName').value.trim();
+  var hrs = document.getElementById('foodHours').value.trim();
+  var map = document.getElementById('foodMapUrl').value.trim();
+  var sch = document.getElementById('foodInSchedule').value.trim();
+  if (sub) item.subName = sub;
+  if (hrs) item.hours = hrs;
+  if (map) item.mapUrl = map;
+  if (sch) item.inSchedule = sch;
 
-  FOOD_DATA.push({ name, region, desc, reco, location, price, badge: 'badge-local' });
-  renderFoodPanel();
-  addMoreButtons();
-  saveToStorage();
-  closeModal('food');
-
-  // Reset
-  document.getElementById('foodName').value = '';
-  document.getElementById('foodDesc').value = '';
-  document.getElementById('foodReco').value = '';
-  document.getElementById('foodLocation').value = '';
-  document.getElementById('foodPrice').value = '';
+  if (_foodEditMode && _foodEditIdx >= 0) {
+    FOOD_DATA[_foodEditIdx] = item;
+  } else {
+    FOOD_DATA.push(item);
+  }
+  renderFoodPanel(); addMoreButtons(); saveToStorage(); closeModal('food');
+  _foodEditMode = false; _foodEditIdx = -1;
 }
 
 function submitNewCafe() {
-  var name = document.getElementById('cafeName').value;
-  var region = document.getElementById('cafeRegion').value;
-  var desc = document.getElementById('cafeDesc').value;
-  var reco = document.getElementById('cafeReco').value;
-  var location = document.getElementById('cafeLocation').value;
-  var price = parseFloat(document.getElementById('cafePrice').value) || 5;
-
+  var name = document.getElementById('cafeName').value.trim();
   if (!name) { alert('이름을 입력해주세요.'); return; }
+  var item = {
+    name: name,
+    region: document.getElementById('cafeRegion').value,
+    badge: document.getElementById('cafeBadge').value,
+    desc: document.getElementById('cafeDesc').value.trim(),
+    reco: document.getElementById('cafeReco').value.trim(),
+    location: document.getElementById('cafeLocation').value.trim(),
+    price: parseFloat(document.getElementById('cafePrice').value) || 5
+  };
+  var sub = document.getElementById('cafeSubName').value.trim();
+  var hrs = document.getElementById('cafeHours').value.trim();
+  var map = document.getElementById('cafeMapUrl').value.trim();
+  var sch = document.getElementById('cafeInSchedule').value.trim();
+  if (sub) item.subName = sub;
+  if (hrs) item.hours = hrs;
+  if (map) item.mapUrl = map;
+  if (sch) item.inSchedule = sch;
 
-  CAFE_DATA.push({ name, region, desc, reco, location, price, badge: 'badge-cafe-type' });
-  renderCafePanel();
-  addMoreButtons();
-  saveToStorage();
-  closeModal('cafe');
-
-  // Reset
-  document.getElementById('cafeName').value = '';
-  document.getElementById('cafeDesc').value = '';
-  document.getElementById('cafeReco').value = '';
-  document.getElementById('cafeLocation').value = '';
-  document.getElementById('cafePrice').value = '';
+  if (_cafeEditMode && _cafeEditIdx >= 0) {
+    CAFE_DATA[_cafeEditIdx] = item;
+  } else {
+    CAFE_DATA.push(item);
+  }
+  renderCafePanel(); addMoreButtons(); saveToStorage(); closeModal('cafe');
+  _cafeEditMode = false; _cafeEditIdx = -1;
 }
 
 // ===== SCHEDULE CRUD =====
