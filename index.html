@@ -3,7 +3,8 @@
 <!-- v3.11.1 (2026.04.01) : [버그수정] saveToStorage/loadFromStorage에 FOOD/CAFE/SPOT/HOTEL/SCHEDULE_DATA 포함,
                             submitNewFood·submitNewCafe saveToStorage 호출 누락 수정,
                             pushToFirebase·startFirebaseListener 전체 데이터 배열 동기화 반영,
-                            refreshAllUI 전체 패널 재렌더링으로 확장 -->
+                            refreshAllUI 전체 패널 재렌더링으로 확장,
+                            refreshAllUI 내 renderHotelCarousel → renderHotelPanel 함수명 오타 수정 (Firebase 연결 오류 원인) -->
 <!-- v3.11 (2026.04.01) : 맛집(26곳)/카페(18곳)/관광스팟(33곳) 영업시간(hours) 추가 — 구글지도 기반 77곳 전수 조사 -->
 <!-- v3.10.1 (2026.04.01) : +숙소 추가 버튼 크기/위치를 맛집탭 스타일(.crud-bar .btn-add)로 변경,
                             date input 달력 아이콘 color-scheme 다크/라이트 대응 수정 -->
@@ -3208,7 +3209,7 @@ function refreshAllUI() {
   renderFoodPanel();
   renderCafePanel();
   renderSpotPanel();
-  renderHotelCarousel();
+  renderHotelPanel();
   renderSchedule();
   updateExpenseUI();
   addMoreButtons();
