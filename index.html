@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <!-- Version History (최신순) -->
+<!-- v3.11.3 (2026.04.01) : [버그수정] showConfirm 내 closeConfirm() 호출 순서 오류로 _confirmCallback이 null되어 모든 삭제 확인 콜백 미실행 수정 -->
 <!-- v3.11.2 (2026.04.01) : [버그수정] 맛집/카페/관광스팟 삭제 시 DATA 배열 splice + saveToStorage 호출 누락 수정 -->
 <!-- v3.11.1 (2026.04.01) : [버그수정] saveToStorage/loadFromStorage에 FOOD/CAFE/SPOT/HOTEL/SCHEDULE_DATA 포함,
                             submitNewFood·submitNewCafe saveToStorage 호출 누락 수정,
@@ -413,8 +414,9 @@ function showConfirm(onConfirm) {
   _confirmCallback = onConfirm;
   document.getElementById('confirmOverlay').classList.add('open');
   document.getElementById('confirmOk').onclick = function() {
+    var cb = _confirmCallback;
     closeConfirm();
-    if (_confirmCallback) _confirmCallback();
+    if (cb) cb();
   };
 }
 function closeConfirm() {
@@ -3923,8 +3925,9 @@ function showConfirm(onConfirm) {
   _confirmCallback = onConfirm;
   document.getElementById('confirmOverlay').classList.add('open');
   document.getElementById('confirmOk').onclick = function() {
+    var cb = _confirmCallback;
     closeConfirm();
-    if (_confirmCallback) _confirmCallback();
+    if (cb) cb();
   };
 }
 function closeConfirm() {
