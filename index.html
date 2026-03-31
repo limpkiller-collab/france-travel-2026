@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <!-- Version History (최신순) -->
+<!-- v3.12 (2026.04.01) : 맛집/카페 모달 필드 확장(subName·배지·영업시간·구글지도URL·일정연동), 관광스팟 추가/수정 모달 신규, 맛집/카페/관광스팟 수정 기능 추가 -->
 <!-- v3.11.3 (2026.04.01) : [버그수정] showConfirm 내 closeConfirm() 호출 순서 오류로 _confirmCallback이 null되어 모든 삭제 확인 콜백 미실행 수정 -->
 <!-- v3.11.2 (2026.04.01) : [버그수정] 맛집/카페/관광스팟 삭제 시 DATA 배열 splice + saveToStorage 호출 누락 수정 -->
 <!-- v3.11.1 (2026.04.01) : [버그수정] saveToStorage/loadFromStorage에 FOOD/CAFE/SPOT/HOTEL/SCHEDULE_DATA 포함,
@@ -176,54 +177,182 @@ function submitNewExpense() {
 
 
 // ===== FOOD/CAFE CRUD =====
+var _foodEditMode = false;
+var _foodEditIdx = -1;
+
+function openFoodModal(editIdx) {
+  var ids = ['foodName','foodSubName','foodDesc','foodReco','foodLocation','foodPrice','foodHours','foodMapUrl','foodInSchedule'];
+  if (editIdx !== undefined && editIdx >= 0) {
+    _foodEditMode = true; _foodEditIdx = editIdx;
+    var d = FOOD_DATA[editIdx];
+    document.getElementById('foodName').value = d.name || '';
+    document.getElementById('foodSubName').value = d.subName || '';
+    document.getElementById('foodRegion').value = d.region || 'marseille';
+    document.getElementById('foodBadge').value = d.badge || 'badge-local';
+    document.getElementById('foodDesc').value = d.desc || '';
+    document.getElementById('foodReco').value = d.reco || '';
+    document.getElementById('foodLocation').value = d.location || '';
+    document.getElementById('foodPrice').value = d.price || '';
+    document.getElementById('foodHours').value = d.hours || '';
+    document.getElementById('foodMapUrl').value = d.mapUrl || '';
+    document.getElementById('foodInSchedule').value = d.inSchedule || '';
+    document.getElementById('food-modal-title').textContent = '🍜 맛집 수정';
+  } else {
+    _foodEditMode = false; _foodEditIdx = -1;
+    ids.forEach(function(id) { document.getElementById(id).value = ''; });
+    document.getElementById('foodBadge').value = 'badge-local';
+    document.getElementById('foodRegion').value = 'marseille';
+    document.getElementById('food-modal-title').textContent = '🍜 맛집 추가';
+  }
+  openModal('food');
+}
+
 function submitNewFood() {
-  var name = document.getElementById('foodName').value;
-  var region = document.getElementById('foodRegion').value;
-  var desc = document.getElementById('foodDesc').value;
-  var reco = document.getElementById('foodReco').value;
-  var location = document.getElementById('foodLocation').value;
-  var price = parseFloat(document.getElementById('foodPrice').value) || 15;
-
+  var name = document.getElementById('foodName').value.trim();
   if (!name) { alert('이름을 입력해주세요.'); return; }
+  var item = {
+    name: name,
+    region: document.getElementById('foodRegion').value,
+    badge: document.getElementById('foodBadge').value,
+    desc: document.getElementById('foodDesc').value.trim(),
+    reco: document.getElementById('foodReco').value.trim(),
+    location: document.getElementById('foodLocation').value.trim(),
+    price: parseFloat(document.getElementById('foodPrice').value) || 15
+  };
+  var sub = document.getElementById('foodSubName').value.trim();
+  var hrs = document.getElementById('foodHours').value.trim();
+  var map = document.getElementById('foodMapUrl').value.trim();
+  var sch = document.getElementById('foodInSchedule').value.trim();
+  if (sub) item.subName = sub;
+  if (hrs) item.hours = hrs;
+  if (map) item.mapUrl = map;
+  if (sch) item.inSchedule = sch;
 
-  FOOD_DATA.push({ name, region, desc, reco, location, price, badge: 'badge-local' });
-  renderFoodPanel();
-  addMoreButtons();
-  saveToStorage();
-  closeModal('food');
+  if (_foodEditMode && _foodEditIdx >= 0) {
+    FOOD_DATA[_foodEditIdx] = item;
+  } else {
+    FOOD_DATA.push(item);
+  }
+  renderFoodPanel(); addMoreButtons(); saveToStorage(); closeModal('food');
+  _foodEditMode = false; _foodEditIdx = -1;
+}
 
-  // Reset
-  document.getElementById('foodName').value = '';
-  document.getElementById('foodDesc').value = '';
-  document.getElementById('foodReco').value = '';
-  document.getElementById('foodLocation').value = '';
-  document.getElementById('foodPrice').value = '';
+var _cafeEditMode = false;
+var _cafeEditIdx = -1;
+
+function openCafeModal(editIdx) {
+  var ids = ['cafeName','cafeSubName','cafeDesc','cafeReco','cafeLocation','cafePrice','cafeHours','cafeMapUrl','cafeInSchedule'];
+  if (editIdx !== undefined && editIdx >= 0) {
+    _cafeEditMode = true; _cafeEditIdx = editIdx;
+    var d = CAFE_DATA[editIdx];
+    document.getElementById('cafeName').value = d.name || '';
+    document.getElementById('cafeSubName').value = d.subName || '';
+    document.getElementById('cafeRegion').value = d.region || 'marseille';
+    document.getElementById('cafeBadge').value = d.badge || 'badge-cafe-type';
+    document.getElementById('cafeDesc').value = d.desc || '';
+    document.getElementById('cafeReco').value = d.reco || '';
+    document.getElementById('cafeLocation').value = d.location || '';
+    document.getElementById('cafePrice').value = d.price || '';
+    document.getElementById('cafeHours').value = d.hours || '';
+    document.getElementById('cafeMapUrl').value = d.mapUrl || '';
+    document.getElementById('cafeInSchedule').value = d.inSchedule || '';
+    document.getElementById('cafe-modal-title').textContent = '☕ 카페 수정';
+  } else {
+    _cafeEditMode = false; _cafeEditIdx = -1;
+    ids.forEach(function(id) { document.getElementById(id).value = ''; });
+    document.getElementById('cafeBadge').value = 'badge-cafe-type';
+    document.getElementById('cafeRegion').value = 'marseille';
+    document.getElementById('cafe-modal-title').textContent = '☕ 카페 추가';
+  }
+  openModal('cafe');
 }
 
 function submitNewCafe() {
-  var name = document.getElementById('cafeName').value;
-  var region = document.getElementById('cafeRegion').value;
-  var desc = document.getElementById('cafeDesc').value;
-  var reco = document.getElementById('cafeReco').value;
-  var location = document.getElementById('cafeLocation').value;
-  var price = parseFloat(document.getElementById('cafePrice').value) || 5;
-
+  var name = document.getElementById('cafeName').value.trim();
   if (!name) { alert('이름을 입력해주세요.'); return; }
+  var item = {
+    name: name,
+    region: document.getElementById('cafeRegion').value,
+    badge: document.getElementById('cafeBadge').value,
+    desc: document.getElementById('cafeDesc').value.trim(),
+    reco: document.getElementById('cafeReco').value.trim(),
+    location: document.getElementById('cafeLocation').value.trim(),
+    price: parseFloat(document.getElementById('cafePrice').value) || 5
+  };
+  var sub = document.getElementById('cafeSubName').value.trim();
+  var hrs = document.getElementById('cafeHours').value.trim();
+  var map = document.getElementById('cafeMapUrl').value.trim();
+  var sch = document.getElementById('cafeInSchedule').value.trim();
+  if (sub) item.subName = sub;
+  if (hrs) item.hours = hrs;
+  if (map) item.mapUrl = map;
+  if (sch) item.inSchedule = sch;
 
-  CAFE_DATA.push({ name, region, desc, reco, location, price, badge: 'badge-cafe-type' });
-  renderCafePanel();
-  addMoreButtons();
-  saveToStorage();
-  closeModal('cafe');
-
-  // Reset
-  document.getElementById('cafeName').value = '';
-  document.getElementById('cafeDesc').value = '';
-  document.getElementById('cafeReco').value = '';
-  document.getElementById('cafeLocation').value = '';
-  document.getElementById('cafePrice').value = '';
+  if (_cafeEditMode && _cafeEditIdx >= 0) {
+    CAFE_DATA[_cafeEditIdx] = item;
+  } else {
+    CAFE_DATA.push(item);
+  }
+  renderCafePanel(); addMoreButtons(); saveToStorage(); closeModal('cafe');
+  _cafeEditMode = false; _cafeEditIdx = -1;
 }
 
+
+var _spotEditMode = false;
+var _spotEditIdx = -1;
+
+function openSpotModal(editIdx) {
+  var ids = ['spotName','spotSubName','spotDesc','spotLocation','spotAdmission','spotMapUrl','spotInSchedule'];
+  if (editIdx !== undefined && editIdx >= 0) {
+    _spotEditMode = true; _spotEditIdx = editIdx;
+    var d = SPOT_DATA[editIdx];
+    document.getElementById('spotName').value = d.name || '';
+    document.getElementById('spotSubName').value = d.subName || '';
+    document.getElementById('spotRegion').value = d.region || 'marseille';
+    document.getElementById('spotBadge').value = d.badge || 'badge-spot-view';
+    document.getElementById('spotDesc').value = d.desc || '';
+    document.getElementById('spotLocation').value = d.location || '';
+    document.getElementById('spotAdmission').value = d.admission || '';
+    document.getElementById('spotMapUrl').value = d.mapUrl || '';
+    document.getElementById('spotInSchedule').value = d.inSchedule || '';
+    document.getElementById('spot-modal-title').textContent = '🗺️ 관광스팟 수정';
+  } else {
+    _spotEditMode = false; _spotEditIdx = -1;
+    ids.forEach(function(id) { document.getElementById(id).value = ''; });
+    document.getElementById('spotBadge').value = 'badge-spot-view';
+    document.getElementById('spotRegion').value = 'marseille';
+    document.getElementById('spot-modal-title').textContent = '🗺️ 관광스팟 추가';
+  }
+  openModal('spot');
+}
+
+function submitNewSpot() {
+  var name = document.getElementById('spotName').value.trim();
+  if (!name) { alert('이름을 입력해주세요.'); return; }
+  var item = {
+    name: name,
+    region: document.getElementById('spotRegion').value,
+    badge: document.getElementById('spotBadge').value,
+    desc: document.getElementById('spotDesc').value.trim(),
+    location: document.getElementById('spotLocation').value.trim()
+  };
+  var sub = document.getElementById('spotSubName').value.trim();
+  var adm = document.getElementById('spotAdmission').value.trim();
+  var map = document.getElementById('spotMapUrl').value.trim();
+  var sch = document.getElementById('spotInSchedule').value.trim();
+  if (sub) item.subName = sub;
+  if (adm) item.admission = adm;
+  if (map) item.mapUrl = map;
+  if (sch) item.inSchedule = sch;
+
+  if (_spotEditMode && _spotEditIdx >= 0) {
+    SPOT_DATA[_spotEditIdx] = item;
+  } else {
+    SPOT_DATA.push(item);
+  }
+  renderSpotPanel(); addMoreButtons(); saveToStorage(); closeModal('spot');
+  _spotEditMode = false; _spotEditIdx = -1;
+}
 // ===== SCHEDULE CRUD =====
 function submitNewSchedule() {
   var day = parseInt(document.getElementById('scheduleDay').value);
@@ -315,6 +444,25 @@ function addMoreButtons() {
     btn.innerHTML = '⋮';
     var dd = document.createElement('div');
     dd.className = 'card-dropdown';
+    var editBtn2 = document.createElement('button');
+    editBtn2.className = 'card-dropdown-item';
+    editBtn2.textContent = '✏️ 수정하기';
+    editBtn2.onclick = function(e) {
+      e.stopPropagation();
+      dd.classList.remove('show');
+      var cardName = card.querySelector('h3') ? card.querySelector('h3').textContent.trim() : '';
+      if (card.closest('#food-list')) {
+        var idx = FOOD_DATA.findIndex(function(f) { return f.name === cardName; });
+        if (idx > -1) openFoodModal(idx);
+      } else if (card.closest('#cafe-list')) {
+        var idx = CAFE_DATA.findIndex(function(f) { return f.name === cardName; });
+        if (idx > -1) openCafeModal(idx);
+      } else if (card.closest('#spot-list')) {
+        var idx = SPOT_DATA.findIndex(function(f) { return f.name === cardName; });
+        if (idx > -1) openSpotModal(idx);
+      }
+    };
+    dd.appendChild(editBtn2);
     var delBtn = document.createElement('button');
     delBtn.className = 'card-dropdown-item danger';
     delBtn.textContent = '🗑 삭제하기';
@@ -1576,6 +1724,9 @@ document.addEventListener('DOMContentLoaded', function() {
     .confirm-cancel { background: var(--bg); color: var(--text); }
     .confirm-ok { background: var(--negative); color: #fff; }
 
+  /* ── 폼 보조 텍스트 ── */
+  .form-optional { font-size:.75rem; opacity:.5; font-weight:400; margin-left:.25rem; }
+
   </style>
 </head>
 <body>
@@ -2370,7 +2521,7 @@ function renderFoodPanel() {
     crudBar = document.createElement('div');
     crudBar.id = 'food-crud-bar';
     crudBar.className = 'crud-bar';
-    crudBar.innerHTML = '<button class="btn-add" onclick="openModal(\'food\')"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 🍜 맛집 추가</button>';
+    crudBar.innerHTML = '<button class="btn-add" onclick="openFoodModal()"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 🍜 맛집 추가</button>';
     filterContainer.parentNode.insertBefore(crudBar, filterContainer);
   }
 
@@ -2489,7 +2640,7 @@ function renderCafePanel() {
     crudBar = document.createElement('div');
     crudBar.id = 'cafe-crud-bar';
     crudBar.className = 'crud-bar';
-    crudBar.innerHTML = '<button class="btn-add" onclick="openModal(\'cafe\')"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> ☕ 카페 추가</button>';
+    crudBar.innerHTML = '<button class="btn-add" onclick="openCafeModal()"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> ☕ 카페 추가</button>';
     filterContainer.parentNode.insertBefore(crudBar, filterContainer);
   }
 
@@ -2569,6 +2720,16 @@ function renderSpotPanel() {
   var MAP_SVG = '<svg class="map-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>';
   const filterContainer = document.getElementById('spot-filters');
   const listContainer = document.getElementById('spot-list');
+
+  // Add CRUD bar before filters
+  let spotCrudBar = document.getElementById('spot-crud-bar');
+  if (!spotCrudBar) {
+    spotCrudBar = document.createElement('div');
+    spotCrudBar.id = 'spot-crud-bar';
+    spotCrudBar.className = 'crud-bar';
+    spotCrudBar.innerHTML = '<button class="btn-add" onclick="openSpotModal()"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 🗺️ 스팟 추가</button>';
+    filterContainer.parentNode.insertBefore(spotCrudBar, filterContainer);
+  }
 
   // Filters
   filterContainer.innerHTML = `
@@ -3826,6 +3987,25 @@ function addMoreButtons() {
     btn.innerHTML = '⋮';
     var dd = document.createElement('div');
     dd.className = 'card-dropdown';
+    var editBtn2 = document.createElement('button');
+    editBtn2.className = 'card-dropdown-item';
+    editBtn2.textContent = '✏️ 수정하기';
+    editBtn2.onclick = function(e) {
+      e.stopPropagation();
+      dd.classList.remove('show');
+      var cardName = card.querySelector('h3') ? card.querySelector('h3').textContent.trim() : '';
+      if (card.closest('#food-list')) {
+        var idx = FOOD_DATA.findIndex(function(f) { return f.name === cardName; });
+        if (idx > -1) openFoodModal(idx);
+      } else if (card.closest('#cafe-list')) {
+        var idx = CAFE_DATA.findIndex(function(f) { return f.name === cardName; });
+        if (idx > -1) openCafeModal(idx);
+      } else if (card.closest('#spot-list')) {
+        var idx = SPOT_DATA.findIndex(function(f) { return f.name === cardName; });
+        if (idx > -1) openSpotModal(idx);
+      }
+    };
+    dd.appendChild(editBtn2);
     var delBtn = document.createElement('button');
     delBtn.className = 'card-dropdown-item danger';
     delBtn.textContent = '🗑 삭제하기';
@@ -4014,25 +4194,51 @@ document.addEventListener('DOMContentLoaded', function() {
 <div class="modal-overlay" id="modal-food" onclick="if(event.target===this)closeModal('food')">
   <div class="modal">
     <button class="modal-close" onclick="closeModal('food')">&times;</button>
-    <h2>🍜 맛집 추가</h2>
-    <label class="form-label">이름</label>
+    <h2 id="food-modal-title">🍜 맛집 추가</h2>
+    <label class="form-label">이름 <span style="color:#ff6b81">*</span></label>
     <input type="text" class="form-input" id="foodName" placeholder="레스토랑 이름">
-    <label class="form-label">지역</label>
-    <select class="form-input" id="foodRegion">
-      <option value="marseille">⚓ 마르세유</option>
-      <option value="provence">💜 프로방스</option>
-      <option value="cotedazur">🎨 코트다쥐르</option>
-      <option value="nice">🌊 니스</option>
-      <option value="paris">🗼 파리</option>
-    </select>
+    <label class="form-label">현지어명 <span class="form-optional">(선택)</span></label>
+    <input type="text" class="form-input" id="foodSubName" placeholder="현지어 또는 영문 이름">
+    <div class="form-grid-2">
+      <div>
+        <label class="form-label">지역</label>
+        <select class="form-input" id="foodRegion">
+          <option value="marseille">⚓ 마르세유</option>
+          <option value="provence">💜 프로방스</option>
+          <option value="cotedazur">🎨 코트다쥐르</option>
+          <option value="nice">🌊 니스</option>
+          <option value="paris">🗼 파리</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label">배지</label>
+        <select class="form-input" id="foodBadge">
+          <option value="badge-local">🏠 로컬</option>
+          <option value="badge-must">⭐ 필수</option>
+          <option value="badge-local-rec">👍 현지추천</option>
+        </select>
+      </div>
+    </div>
     <label class="form-label">설명</label>
-    <input type="text" class="form-input" id="foodDesc" placeholder="음식 종류">
+    <input type="text" class="form-input" id="foodDesc" placeholder="음식 종류, 분위기 등">
     <label class="form-label">추천 메뉴</label>
-    <input type="text" class="form-input" id="foodReco" placeholder="추천 메뉴">
-    <label class="form-label">위치</label>
+    <input type="text" class="form-input" id="foodReco" placeholder="대표 메뉴, 추천 음식">
+    <label class="form-label">위치 / 주소</label>
     <input type="text" class="form-input" id="foodLocation" placeholder="주소 또는 지역">
-    <label class="form-label">가격 (EUR)</label>
-    <input type="number" class="form-input" id="foodPrice" placeholder="1인 평균 가격">
+    <div class="form-grid-2">
+      <div>
+        <label class="form-label">가격 (EUR)</label>
+        <input type="number" class="form-input" id="foodPrice" placeholder="1인 평균">
+      </div>
+      <div>
+        <label class="form-label">일정 연동 <span class="form-optional">(선택)</span></label>
+        <input type="text" class="form-input" id="foodInSchedule" placeholder="예: DAY 2">
+      </div>
+    </div>
+    <label class="form-label">영업시간 <span class="form-optional">(선택)</span></label>
+    <input type="text" class="form-input" id="foodHours" placeholder="예: 월~토 12:00-14:30 / 일 휴무">
+    <label class="form-label">구글지도 URL <span class="form-optional">(선택)</span></label>
+    <input type="text" class="form-input" id="foodMapUrl" placeholder="https://maps.google.com/...">
     <button class="form-btn" onclick="submitNewFood()">저장하기</button>
   </div>
 </div>
@@ -4040,26 +4246,103 @@ document.addEventListener('DOMContentLoaded', function() {
 <div class="modal-overlay" id="modal-cafe" onclick="if(event.target===this)closeModal('cafe')">
   <div class="modal">
     <button class="modal-close" onclick="closeModal('cafe')">&times;</button>
-    <h2>☕ 카페 추가</h2>
-    <label class="form-label">이름</label>
+    <h2 id="cafe-modal-title">☕ 카페 추가</h2>
+    <label class="form-label">이름 <span style="color:#ff6b81">*</span></label>
     <input type="text" class="form-input" id="cafeName" placeholder="카페 이름">
-    <label class="form-label">지역</label>
-    <select class="form-input" id="cafeRegion">
-      <option value="marseille">⚓ 마르세유</option>
-      <option value="provence">💜 프로방스</option>
-      <option value="cotedazur">🎨 코트다쥐르</option>
-      <option value="nice">🌊 니스</option>
-      <option value="paris">🗼 파리</option>
-    </select>
+    <label class="form-label">현지어명 <span class="form-optional">(선택)</span></label>
+    <input type="text" class="form-input" id="cafeSubName" placeholder="현지어 또는 영문 이름">
+    <div class="form-grid-2">
+      <div>
+        <label class="form-label">지역</label>
+        <select class="form-input" id="cafeRegion">
+          <option value="marseille">⚓ 마르세유</option>
+          <option value="provence">💜 프로방스</option>
+          <option value="cotedazur">🎨 코트다쥐르</option>
+          <option value="nice">🌊 니스</option>
+          <option value="paris">🗼 파리</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label">배지</label>
+        <select class="form-input" id="cafeBadge">
+          <option value="badge-cafe-type">☕ 스페셜티</option>
+          <option value="badge-dessert">🍰 디저트</option>
+          <option value="badge-view">🌅 뷰</option>
+        </select>
+      </div>
+    </div>
     <label class="form-label">설명</label>
-    <input type="text" class="form-input" id="cafeDesc" placeholder="카페 종류">
+    <input type="text" class="form-input" id="cafeDesc" placeholder="카페 분위기, 특징 등">
     <label class="form-label">추천 메뉴</label>
-    <input type="text" class="form-input" id="cafeReco" placeholder="추천 메뉴">
-    <label class="form-label">위치</label>
+    <input type="text" class="form-input" id="cafeReco" placeholder="대표 음료, 디저트 등">
+    <label class="form-label">위치 / 주소</label>
     <input type="text" class="form-input" id="cafeLocation" placeholder="주소 또는 지역">
-    <label class="form-label">가격 (EUR)</label>
-    <input type="number" class="form-input" id="cafePrice" placeholder="1인 평균 가격">
+    <div class="form-grid-2">
+      <div>
+        <label class="form-label">가격 (EUR)</label>
+        <input type="number" class="form-input" id="cafePrice" placeholder="1인 평균">
+      </div>
+      <div>
+        <label class="form-label">일정 연동 <span class="form-optional">(선택)</span></label>
+        <input type="text" class="form-input" id="cafeInSchedule" placeholder="예: DAY 3">
+      </div>
+    </div>
+    <label class="form-label">영업시간 <span class="form-optional">(선택)</span></label>
+    <input type="text" class="form-input" id="cafeHours" placeholder="예: 매일 08:00-20:00 / 월 휴무">
+    <label class="form-label">구글지도 URL <span class="form-optional">(선택)</span></label>
+    <input type="text" class="form-input" id="cafeMapUrl" placeholder="https://maps.google.com/...">
     <button class="form-btn" onclick="submitNewCafe()">저장하기</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-spot" onclick="if(event.target===this)closeModal('spot')">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('spot')">&times;</button>
+    <h2 id="spot-modal-title">🗺️ 관광스팟 추가</h2>
+    <label class="form-label">이름 <span style="color:#ff6b81">*</span></label>
+    <input type="text" class="form-input" id="spotName" placeholder="관광지 이름">
+    <label class="form-label">현지어/영문명 <span class="form-optional">(선택)</span></label>
+    <input type="text" class="form-input" id="spotSubName" placeholder="현지어 또는 영문 이름">
+    <div class="form-grid-2">
+      <div>
+        <label class="form-label">지역</label>
+        <select class="form-input" id="spotRegion">
+          <option value="marseille">⚓ 마르세유</option>
+          <option value="provence">💜 프로방스</option>
+          <option value="cotedazur">🎨 코트다쥐르</option>
+          <option value="nice">🌊 니스</option>
+          <option value="paris">🗼 파리</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label">배지</label>
+        <select class="form-input" id="spotBadge">
+          <option value="badge-spot-view">🔭 뷰포인트</option>
+          <option value="badge-spot-art">🎨 미술·갤러리</option>
+          <option value="badge-spot-history">🏛️ 역사유적</option>
+          <option value="badge-spot-nature">🌿 자연</option>
+          <option value="badge-spot-market">🛒 시장</option>
+          <option value="badge-spot-free">🆓 무료입장</option>
+        </select>
+      </div>
+    </div>
+    <label class="form-label">설명</label>
+    <input type="text" class="form-input" id="spotDesc" placeholder="관광지 특징, 볼거리 등">
+    <label class="form-label">위치 / 주소</label>
+    <input type="text" class="form-input" id="spotLocation" placeholder="주소 또는 지역">
+    <div class="form-grid-2">
+      <div>
+        <label class="form-label">입장료 <span class="form-optional">(선택)</span></label>
+        <input type="text" class="form-input" id="spotAdmission" placeholder="예: 무료, €17">
+      </div>
+      <div>
+        <label class="form-label">일정 연동 <span class="form-optional">(선택)</span></label>
+        <input type="text" class="form-input" id="spotInSchedule" placeholder="예: DAY 3">
+      </div>
+    </div>
+    <label class="form-label">구글지도 URL <span class="form-optional">(선택)</span></label>
+    <input type="text" class="form-input" id="spotMapUrl" placeholder="https://maps.google.com/...">
+    <button class="form-btn" onclick="submitNewSpot()">저장하기</button>
   </div>
 </div>
 
