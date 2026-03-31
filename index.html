@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <!-- Version History (최신순) -->
+<!-- v3.11.2 (2026.04.01) : [버그수정] 맛집/카페/관광스팟 삭제 시 DATA 배열 splice + saveToStorage 호출 누락 수정 -->
 <!-- v3.11.1 (2026.04.01) : [버그수정] saveToStorage/loadFromStorage에 FOOD/CAFE/SPOT/HOTEL/SCHEDULE_DATA 포함,
                             submitNewFood·submitNewCafe saveToStorage 호출 누락 수정,
                             pushToFirebase·startFirebaseListener 전체 데이터 배열 동기화 반영,
@@ -319,7 +320,25 @@ function addMoreButtons() {
     delBtn.onclick = function(e) {
       e.stopPropagation();
       dd.classList.remove('show');
-      showConfirm(function() { card.remove(); });
+      showConfirm(function() {
+        var cardName = card.querySelector('h3') ? card.querySelector('h3').textContent.trim() : '';
+        if (card.closest('#food-list')) {
+          var idx = FOOD_DATA.findIndex(function(f) { return f.name === cardName; });
+          if (idx > -1) FOOD_DATA.splice(idx, 1);
+          renderFoodPanel(); addMoreButtons();
+        } else if (card.closest('#cafe-list')) {
+          var idx = CAFE_DATA.findIndex(function(f) { return f.name === cardName; });
+          if (idx > -1) CAFE_DATA.splice(idx, 1);
+          renderCafePanel(); addMoreButtons();
+        } else if (card.closest('#spot-list')) {
+          var idx = SPOT_DATA.findIndex(function(f) { return f.name === cardName; });
+          if (idx > -1) SPOT_DATA.splice(idx, 1);
+          renderSpotPanel(); addMoreButtons();
+        } else {
+          card.remove();
+        }
+        saveToStorage();
+      });
     };
     dd.appendChild(delBtn);
     btn.onclick = function(e) {
@@ -3811,7 +3830,25 @@ function addMoreButtons() {
     delBtn.onclick = function(e) {
       e.stopPropagation();
       dd.classList.remove('show');
-      showConfirm(function() { card.remove(); });
+      showConfirm(function() {
+        var cardName = card.querySelector('h3') ? card.querySelector('h3').textContent.trim() : '';
+        if (card.closest('#food-list')) {
+          var idx = FOOD_DATA.findIndex(function(f) { return f.name === cardName; });
+          if (idx > -1) FOOD_DATA.splice(idx, 1);
+          renderFoodPanel(); addMoreButtons();
+        } else if (card.closest('#cafe-list')) {
+          var idx = CAFE_DATA.findIndex(function(f) { return f.name === cardName; });
+          if (idx > -1) CAFE_DATA.splice(idx, 1);
+          renderCafePanel(); addMoreButtons();
+        } else if (card.closest('#spot-list')) {
+          var idx = SPOT_DATA.findIndex(function(f) { return f.name === cardName; });
+          if (idx > -1) SPOT_DATA.splice(idx, 1);
+          renderSpotPanel(); addMoreButtons();
+        } else {
+          card.remove();
+        }
+        saveToStorage();
+      });
     };
     dd.appendChild(delBtn);
     btn.onclick = function(e) {
