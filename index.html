@@ -1,5 +1,7 @@
 <!DOCTYPE html>
 <!-- Version History (최신순) -->
+<!-- v3.14.2 (2026.05.03) : [기능] 예산 KPI 카드 카테고리별 자동 계산 — BUDGET_DATA 기반 computeBudgetSummary() 도입, KPI 값/부제목/% 분모 모두 동적 (현지/항공/숙소 분리 표기)
+                            [기능] 사용경비 모달에 'DAY 자동 분류 미리보기' 추가 — 사용일자 입력/사전결제 토글 변경 즉시 어떤 DAY로 분류될지 안내 라벨 실시간 표시 -->
 <!-- v3.14.1 (2026.05.03) : [버그수정] KPI '예산 대비 %' 분모가 €980.24만 사용 → 항공 ₩2,280,400 미반영으로 사전결제만 입력해도 146% 초과로 잘못 표시되던 버그 수정
                             [버그수정] '실제 사용 €X' 표기가 EUR 입력분만 합산해 KRW 입력(항공 등) 누락 → KRW를 EUR 환산해 합산하도록 수정
                             [상수] BUDGET_FLIGHT_KRW(2,280,400) / BUDGET_LOCAL_EUR(980.24) 분리, 총 budgetKRW = 항공 + 현지 환산 -->
@@ -170,6 +172,43 @@ function isPrepaymentDate(dateStr) {
   return DAYS.length > 0 && dateStr < DAYS[0].date;
 }
 
+// [v3.14.2] 사용경비 모달의 DAY 자동 분류 미리보기 — 사용일자/토글 변경 즉시 호출
+function updateDayPreview() {
+  const dateEl = document.getElementById('expenseDate');
+  const prepayEl = document.getElementById('expensePrepayment');
+  const previewEl = document.getElementById('expenseDayPreview');
+  if (!dateEl || !previewEl) return;
+
+  const dateStr = dateEl.value;
+  const isPrepayChecked = prepayEl && prepayEl.checked;
+
+  let icon, text, cls;
+  if (isPrepayChecked) {
+    icon = '💳'; cls = 'preview-prepay';
+    text = '사전결제 (수동 지정) — DAY 분류 안 됨';
+  } else if (!dateStr) {
+    icon = '📅'; cls = 'preview-info';
+    text = '사용일자를 입력하면 자동으로 DAY가 계산됩니다';
+  } else if (isPrepaymentDate(dateStr)) {
+    icon = '💳'; cls = 'preview-prepay';
+    text = '사전결제로 자동 분류 (여행 시작 ' + DAYS[0].date + ' 이전)';
+  } else {
+    const matched = DAYS.find(function(d) { return d.date === dateStr; });
+    if (matched) {
+      icon = '📅'; cls = 'preview-day';
+      text = 'DAY ' + matched.num + ' · ' + matched.title + ' (' + matched.date + ' ' + matched.dow + ')';
+    } else if (DAYS.length > 0 && dateStr > DAYS[DAYS.length - 1].date) {
+      icon = '⚠️'; cls = 'preview-warn';
+      text = '여행 종료(' + DAYS[DAYS.length - 1].date + ') 이후 — 사전결제로 분류됨';
+    } else {
+      icon = '⚠️'; cls = 'preview-warn';
+      text = '여행 일정에 없는 날짜 — 사전결제로 분류됨';
+    }
+  }
+  previewEl.className = 'day-preview ' + cls;
+  previewEl.innerHTML = '<span class="preview-icon">' + icon + '</span><span class="preview-text">' + text + '</span>';
+}
+
 // [v3.14] 사용경비 모달: 편집 모드 상태 변수
 var _expenseEditMode = false;
 var _expenseEditIdx = -1;
@@ -215,6 +254,7 @@ function openExpenseModal(editIdx) {
     document.getElementById('expenseSubmitBtn').textContent = '저장하기';
   }
   updateConversion();
+  updateDayPreview(); // [v3.14.2] 모달 오픈 시 미리보기 초기화
   openModal('expense');
 }
 
@@ -1837,6 +1877,22 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     .prepayment-toggle input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: #3b82f6; }
 
+    /* ===== [v3.14.2] DAY 자동 분류 미리보기 ===== */
+    .day-preview {
+      display: flex; align-items: center; gap: 8px; margin-top: 8px;
+      padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 500;
+      border: 1px solid; line-height: 1.4;
+    }
+    .day-preview .preview-icon { font-size: 14px; flex: 0 0 auto; }
+    .day-preview .preview-text { flex: 1; }
+    .day-preview.preview-info { background: rgba(107,114,128,0.08); border-color: rgba(107,114,128,0.2); color: var(--text-secondary); }
+    .day-preview.preview-day { background: rgba(59,130,246,0.1); border-color: rgba(59,130,246,0.3); color: #60a5fa; }
+    .day-preview.preview-prepay { background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.3); color: #fbbf24; }
+    .day-preview.preview-warn { background: rgba(244,63,94,0.1); border-color: rgba(244,63,94,0.3); color: #f87171; }
+    html.theme-light .day-preview.preview-day { color: #1e40af; }
+    html.theme-light .day-preview.preview-prepay { color: #b45309; }
+    html.theme-light .day-preview.preview-warn { color: #be123c; }
+
     /* ===== [v3.14] EXPENSE DETAIL MODAL ===== */
     .detail-body { margin-top: 12px; display: flex; flex-direction: column; gap: 0; }
     .detail-row {
@@ -1958,9 +2014,9 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
     <div class="kpi-card animate delay-4" id="kpiBudgetCard">
       <span class="kpi-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--day4)" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></span>
-      <span class="kpi-label">예상 경비 (항공 포함)</span>
-      <span class="kpi-value">~₩6,200,000</span>
-      <span class="kpi-sub">현지 ~€980 + 항공 ₩2,280,400</span>
+      <span class="kpi-label">예상 경비 (전체)</span>
+      <span class="kpi-value" id="kpiBudgetVal">~₩6,200,000</span>
+      <span class="kpi-sub" id="kpiBudgetSub">현지 ~€980 + 항공 ₩2,280,400</span>
       <div id="kpiExpenseActual" style="margin-top:8px;font-size:12px;color:var(--text-secondary);">실제 사용: <strong id="kpiActualVal" style="color:var(--positive);">0 EUR</strong> <span id="kpiActualKrw">(₩0)</span></div>
       <div class="progress-bar-mini" style="margin-top:6px;"><div id="kpiExpenseBar" style="width:0%;"></div></div>
       <div id="kpiExpensePercent" style="font-size:11px;color:var(--text-secondary);margin-top:2px;">예산 대비 0%</div>
@@ -3376,9 +3432,53 @@ function getCategoryLabel(cat) {
   return labels[cat] || cat;
 }
 
-// [v3.14.1] 예산 상수 — KPI 카드 표시값과 동일 기준 (HTML line 1958~1960과 일치)
-const BUDGET_FLIGHT_KRW = 2280400;   // 항공권 (인터파크 결제분)
-const BUDGET_LOCAL_EUR = 980.24;     // 현지 비용 (TGV/렌터카/숙소/식사/입장료 등)
+// [v3.14.2] 카테고리 메타: BUDGET_DATA 키 → 표시 라벨 / KRW 단축표기 단위
+const BUDGET_CATEGORY_META = {
+  flight: { label: '항공', icon: '✈️' },
+  hotel: { label: '숙소', icon: '🏨' },
+  transport: { label: '교통', icon: '🚌' },
+  meal: { label: '식사', icon: '🍜' },
+  activity: { label: '관광', icon: '🎡' },
+  cafe: { label: '카페', icon: '☕' },
+  souvenir: { label: '기념품', icon: '🎁' },
+  etc: { label: '기타', icon: '📦' }
+};
+
+// [v3.14.2] BUDGET_DATA에서 카테고리별 합계와 총합 KRW를 동적 계산
+function computeBudgetSummary() {
+  const byCategory = {};
+  let totalKRW = 0;
+  Object.keys(BUDGET_DATA).forEach(function(key) {
+    const items = BUDGET_DATA[key] || [];
+    let krw = 0, eur = 0;
+    items.forEach(function(it) {
+      if (it.currency === 'EUR') { eur += it.amount; krw += it.amount * EUR_TO_KRW; }
+      else { krw += it.amount; eur += it.amount / EUR_TO_KRW; }
+    });
+    byCategory[key] = { krw: krw, eur: eur, count: items.length };
+    totalKRW += krw;
+  });
+  return { byCategory: byCategory, totalKRW: totalKRW };
+}
+
+// [v3.14.2] 카테고리 합계 → KPI 부제목 문자열 (현지=transport+meal+activity로 묶음)
+function formatBudgetSubtitle(summary) {
+  const by = summary.byCategory;
+  const localKRW = (by.transport ? by.transport.krw : 0) + (by.meal ? by.meal.krw : 0) + (by.activity ? by.activity.krw : 0);
+  const localEUR = (by.transport ? by.transport.eur : 0) + (by.meal ? by.meal.eur : 0) + (by.activity ? by.activity.eur : 0);
+  const parts = [];
+  if (localEUR > 0) parts.push('현지 €' + Math.round(localEUR));
+  if (by.flight && by.flight.krw > 0) parts.push('항공 ₩' + fmtKrwShort(by.flight.krw));
+  if (by.hotel && by.hotel.krw > 0) parts.push('숙소 ₩' + fmtKrwShort(by.hotel.krw));
+  return parts.join(' + ');
+}
+
+// [v3.14.2] KRW 큰 금액 단축표기 (1,234,567 → 1.23M, 234,567 → 234K)
+function fmtKrwShort(n) {
+  if (n >= 1000000) return (n / 1000000).toFixed(2).replace(/\.?0+$/, '') + 'M';
+  if (n >= 1000) return Math.round(n / 1000) + 'K';
+  return Math.round(n).toLocaleString();
+}
 
 function updateExpenseUI() {
   // [v3.14.1] 실제 사용 합계 — EUR/KRW 양방향 환산해 합산 (KRW 입력분도 EUR 합계에 포함)
@@ -3392,10 +3492,17 @@ function updateExpenseUI() {
   document.getElementById('totalEUR').textContent = `€${totalEUR.toFixed(2)}`;
   document.getElementById('totalKRW').textContent = `₩${Math.round(totalKRW).toLocaleString()}`;
 
-  // [v3.14.1] 예산 분모 — 항공(KRW) + 현지(EUR 환산) 합산. KPI 카드 표시값(₩6.2M)과 일치
-  const budgetKRW = BUDGET_FLIGHT_KRW + (BUDGET_LOCAL_EUR * EUR_TO_KRW);
+  // [v3.14.2] 예산 분모 — BUDGET_DATA에서 동적 계산 (항공+숙소+현지 자동 합산)
+  const budgetSummary = computeBudgetSummary();
+  const budgetKRW = budgetSummary.totalKRW;
   const percent = Math.round((totalKRW / budgetKRW) * 100);
   const overBudget = percent > 100;
+
+  // [v3.14.2] KPI 카드 값/부제목도 동적 렌더 — BUDGET_DATA 변경 시 자동 반영
+  var kpiBudgetValEl = document.getElementById('kpiBudgetVal');
+  var kpiBudgetSubEl = document.getElementById('kpiBudgetSub');
+  if (kpiBudgetValEl) kpiBudgetValEl.textContent = '~₩' + Math.round(budgetKRW).toLocaleString();
+  if (kpiBudgetSubEl) kpiBudgetSubEl.textContent = formatBudgetSubtitle(budgetSummary);
 
   document.getElementById('budgetPercent').textContent = `${percent}%`;
   var budgetBar = document.getElementById('budgetProgressBar');
@@ -4232,10 +4339,14 @@ document.addEventListener('DOMContentLoaded', function() {
     <button class="modal-close" onclick="closeModal('expense')">&times;</button>
     <h2 id="expense-modal-title">💸 사용경비 추가</h2>
     <label class="form-label">사용일자</label>
-    <input type="date" class="form-input" id="expenseDate" value="2026-06-02">
+    <input type="date" class="form-input" id="expenseDate" value="2026-06-02" oninput="updateDayPreview()" onchange="updateDayPreview()">
+    <!-- [v3.14.2] DAY 자동 분류 미리보기 — 사용일자/사전결제 토글 변경 시 실시간 갱신 -->
+    <div id="expenseDayPreview" class="day-preview preview-info">
+      <span class="preview-icon">📅</span><span class="preview-text">사용일자를 입력하면 자동으로 DAY가 계산됩니다</span>
+    </div>
     <!-- [v3.14] 사전결제 토글 (체크 시 day=0으로 강제 분류) -->
     <label class="prepayment-toggle">
-      <input type="checkbox" id="expensePrepayment">
+      <input type="checkbox" id="expensePrepayment" onchange="updateDayPreview()">
       <span>💳 사전결제로 분류 (날짜 무관)</span>
     </label>
     <label class="form-label">카테고리</label>
