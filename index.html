@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <!-- Version History (최신순) -->
+<!-- v3.16.1 (2026.05.03) : [버그수정] 푸터 표시 정보가 v3.9.1 · 2026.03.31 · 1,700 KRW로 고정되어 실제 버전과 불일치 — 현재 버전(v3.16)/날짜로 갱신 + 환율을 INFO 카드와 동일 동적 갱신 -->
 <!-- v3.16 (2026.05.03) : [기능] 사용경비 테이블에 합계 행 추가 — 필터링된 데이터 기준 EUR/KRW 합계 (필터 2개 동시 시 교집합 합산)
                           [기능] 카테고리별 지출 도넛 차트 + DAY별 지출 vs 예산 막대 차트 추가 (Chart.js, 사전결제 제외)
                           [기능] 사용경비 탭에 JSON 내보내기/불러오기 버튼 노출 (기존 viz-menu 함수 재사용)
@@ -2371,7 +2372,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <!-- FOOTER -->
 <footer>
-  <p>프랑스 여행 대시보드 v3.9.1 · 2026.03.31 · 환율 기준: 1 EUR ≈ 1,700 KRW</p>
+  <p>프랑스 여행 대시보드 v3.16 · 2026.05.03 · 환율 기준: <span id="footerRate">1 EUR ≈ 1,700 KRW</span></p>
   <p>모든 데이터는 로컬 저장소에 저장됩니다 · <a href="#" onclick="deleteAllData(); return false;" style="color:var(--negative); text-decoration:none;">전체 데이터 삭제</a></p>
 </footer>
 
@@ -3922,12 +3923,17 @@ function renderInfoPanel() {
 }
 
 // [v3.15] INFO 패널 환율 카드 동적 갱신
+// [v3.16.1] 푸터 환율도 함께 갱신
 function refreshInfoRateCard() {
-  var el = document.getElementById('infoRateDesc');
-  if (!el) return;
   getExchangeRate(RATE_TODAY_KEY).then(function(r) {
     var srcLabel = { cache: '캐시', frankfurter: 'ECB', 'open-er': 'open.er-api', fallback: '폴백' }[r.source] || r.source;
-    el.textContent = '1 EUR ≈ ' + r.rate.toFixed(2).replace(/\.00$/, '') + ' KRW (' + r.date + ', ' + srcLabel + ')';
+    var rateLabel = '1 EUR ≈ ' + r.rate.toFixed(2).replace(/\.00$/, '') + ' KRW';
+
+    var infoEl = document.getElementById('infoRateDesc');
+    if (infoEl) infoEl.textContent = rateLabel + ' (' + r.date + ', ' + srcLabel + ')';
+
+    var footerEl = document.getElementById('footerRate');
+    if (footerEl) footerEl.textContent = rateLabel + ' (' + r.date + ')';
   });
 }
 
