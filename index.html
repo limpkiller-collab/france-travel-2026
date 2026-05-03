@@ -1,5 +1,11 @@
 <!DOCTYPE html>
 <!-- Version History (최신순) -->
+<!-- v3.15 (2026.05.03) : [기능] 환율 자동 조회/캐시 시스템 — frankfurter.dev(ECB 공식) + open.er-api.com 폴백 + EUR_TO_KRW 1700 fallback (3단계)
+                          [기능] 등록 시점 환율 고정 저장 — expense.exchangeRate / exchangeRateDate 필드 추가, 추후 환율 변동 영향 받지 않음
+                          [기능] localStorage 기반 일자별 영구 캐시 (RATE_CACHE_KEY) — 같은 일자 재호출 0회
+                          [기능] 사용경비 모달 '환율 수동 재정의' 입력란 추가 — 자동 환율이 마음에 안 들 때 직접 입력 가능
+                          [기능] INFO 패널 환율 카드 동적 갱신 — 페이지 로드 시 오늘 환율 자동 표시
+                          [호환] 기존 expense 데이터(exchangeRate 없음)는 EUR_TO_KRW(1700) fallback 사용 -->
 <!-- v3.14.2 (2026.05.03) : [기능] 예산 KPI 카드 카테고리별 자동 계산 — BUDGET_DATA 기반 computeBudgetSummary() 도입, KPI 값/부제목/% 분모 모두 동적 (현지/항공/숙소 분리 표기)
                             [기능] 사용경비 모달에 'DAY 자동 분류 미리보기' 추가 — 사용일자 입력/사전결제 토글 변경 즉시 어떤 DAY로 분류될지 안내 라벨 실시간 표시 -->
 <!-- v3.14.1 (2026.05.03) : [버그수정] KPI '예산 대비 %' 분모가 €980.24만 사용 → 항공 ₩2,280,400 미반영으로 사전결제만 입력해도 146% 초과로 잘못 표시되던 버그 수정
@@ -102,6 +108,102 @@ function setCurrency(curr) {
   document.getElementById('currEUR').classList.toggle('active', curr === 'EUR');
   document.getElementById('currKRW').classList.toggle('active', curr === 'KRW');
   updateConversion();
+}
+
+// ===== [v3.15] EXCHANGE RATE SYSTEM =====
+// 3단계 캐시: 메모리(RATE_CACHE) → localStorage(RATE_CACHE_KEY) → fallback(EUR_TO_KRW)
+var RATE_CACHE_KEY = 'eur_krw_rates_v1';
+var RATE_CACHE = {};         // { 'YYYY-MM-DD': rate }
+var RATE_TODAY_KEY = 'latest'; // '오늘 환율' 키 — 날짜 변경되면 자동 무효화
+
+// 메모리 캐시를 localStorage에서 복원 (페이지 첫 로드)
+(function loadRateCache() {
+  try {
+    var raw = localStorage.getItem(RATE_CACHE_KEY);
+    if (raw) RATE_CACHE = JSON.parse(raw) || {};
+  } catch(e) { RATE_CACHE = {}; }
+})();
+
+function saveRateCache() {
+  try { localStorage.setItem(RATE_CACHE_KEY, JSON.stringify(RATE_CACHE)); } catch(e) {}
+}
+
+// [v3.15] 'YYYY-MM-DD' 포맷 헬퍼
+function todayStr() {
+  var d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+// [v3.15] 환율 조회 — 비동기, 캐시 + 폴백
+//   dateStr: 'YYYY-MM-DD' 또는 'latest' (오늘 환율)
+//   반환: Promise<{ rate: number, source: 'cache'|'frankfurter'|'open-er'|'fallback', date: string }>
+async function getExchangeRate(dateStr) {
+  var key = dateStr || RATE_TODAY_KEY;
+  // 1) 메모리/localStorage 캐시 hit
+  if (RATE_CACHE[key]) {
+    return { rate: RATE_CACHE[key].rate, source: 'cache', date: RATE_CACHE[key].date };
+  }
+  // 2) frankfurter.dev (ECB 공식, 과거 일자 지원)
+  try {
+    var path = (key === RATE_TODAY_KEY) ? 'latest' : key; // /v1/latest 또는 /v1/2026-04-15
+    var res = await fetch('https://api.frankfurter.dev/v1/' + path + '?from=EUR&to=KRW', { mode: 'cors' });
+    if (res.ok) {
+      var json = await res.json();
+      if (json && json.rates && json.rates.KRW) {
+        var rec = { rate: json.rates.KRW, date: json.date || key };
+        RATE_CACHE[key] = rec;
+        // 또한 그 날짜 자체로도 캐시 (오늘 latest 호출 시 실제 날짜로 저장)
+        if (rec.date && rec.date !== key) RATE_CACHE[rec.date] = rec;
+        saveRateCache();
+        return Object.assign({ source: 'frankfurter' }, rec);
+      }
+    }
+  } catch(e) { /* 다음 폴백 */ }
+  // 3) open.er-api.com 폴백 — latest만 지원
+  if (key === RATE_TODAY_KEY) {
+    try {
+      var res2 = await fetch('https://open.er-api.com/v6/latest/EUR', { mode: 'cors' });
+      if (res2.ok) {
+        var json2 = await res2.json();
+        if (json2 && json2.rates && json2.rates.KRW) {
+          var rec2 = { rate: json2.rates.KRW, date: todayStr() };
+          RATE_CACHE[key] = rec2;
+          RATE_CACHE[rec2.date] = rec2;
+          saveRateCache();
+          return Object.assign({ source: 'open-er' }, rec2);
+        }
+      }
+    } catch(e) { /* 최종 폴백 */ }
+  }
+  // 4) 최종 폴백
+  return { rate: EUR_TO_KRW, source: 'fallback', date: dateStr || todayStr() };
+}
+
+// [v3.15] 등록 시점에 환율 고정 — sync 컨텍스트에서 즉시 가져오기
+//   1) 해당 일자 정확 캐시 → 가장 정확 (등록일 기준 환율)
+//   2) latest 캐시 (오늘 환율) → 미래 일자/주말 등 데이터 없을 때 가장 가까운 환율
+//   3) fallback 1700 → API 전체 실패 시
+function getRateSyncForDate(dateStr) {
+  var key = dateStr || RATE_TODAY_KEY;
+  if (RATE_CACHE[key]) return RATE_CACHE[key].rate;
+  if (RATE_CACHE[RATE_TODAY_KEY]) return RATE_CACHE[RATE_TODAY_KEY].rate;
+  return EUR_TO_KRW;
+}
+
+// [v3.15] 비동기로 특정 일자 환율을 캐시에 미리 적재 (모달 열릴 때 호출 권장)
+function prefetchRate(dateStr) {
+  getExchangeRate(dateStr).then(function(r) {
+    // 모달 내 환율 입력란이 있고 비어있으면 자동 채움
+    var rateInput = document.getElementById('expenseRateOverride');
+    if (rateInput && !rateInput.dataset.userEdited && rateInput.value === '') {
+      rateInput.placeholder = r.rate.toFixed(2) + ' (자동, ' + r.source + ')';
+    }
+    var hint = document.getElementById('expenseRateHint');
+    if (hint) {
+      var srcLabel = { cache: '💾 캐시', frankfurter: '🌐 frankfurter.dev', 'open-er': '🌐 open.er-api', fallback: '⚠️ 폴백 (1700)' }[r.source] || r.source;
+      hint.textContent = '자동 환율: 1 EUR = ' + r.rate.toFixed(2) + ' KRW (' + r.date + ', ' + srcLabel + ')';
+    }
+  });
 }
 
 // [v3.14] 콤마(천단위) 입력 sanitize 헬퍼
@@ -224,6 +326,9 @@ function openExpenseModal(editIdx) {
   document.getElementById('expenseLink').value = '';
   document.getElementById('expenseDesc').value = '';
   document.getElementById('expensePrepayment').checked = false;
+  // [v3.15] 환율 입력 리셋
+  var rateInput = document.getElementById('expenseRateOverride');
+  if (rateInput) { rateInput.value = ''; rateInput.placeholder = '자동 (비워두면 등록일 환율)'; delete rateInput.dataset.userEdited; }
   setCurrency('EUR');
 
   if (editIdx !== undefined && editIdx >= 0 && expenses[editIdx]) {
@@ -236,6 +341,8 @@ function openExpenseModal(editIdx) {
     document.getElementById('expenseLink').value = ex.link || '';
     document.getElementById('expenseDesc').value = ex.desc || '';
     document.getElementById('expensePrepayment').checked = (ex.day === 0);
+    // [v3.15] 편집 모드 — 저장된 환율을 기본값으로 채움
+    if (rateInput && ex.exchangeRate) { rateInput.value = ex.exchangeRate.toFixed(2); rateInput.dataset.userEdited = '1'; }
     setCurrency(ex.currency || 'EUR');
     selectedCat = ex.category || null;
     if (selectedCat) {
@@ -255,6 +362,8 @@ function openExpenseModal(editIdx) {
   }
   updateConversion();
   updateDayPreview(); // [v3.14.2] 모달 오픈 시 미리보기 초기화
+  // [v3.15] 모달 오픈 시 환율 미리 가져오기 (백그라운드, UI 차단 없음)
+  prefetchRate(document.getElementById('expenseDate').value);
   openModal('expense');
 }
 
@@ -284,6 +393,18 @@ function submitNewExpense() {
     }
   }
 
+  // [v3.15] 환율 결정 우선순위: 수동 재정의 > 캐시(등록일자) > 캐시(latest) > fallback
+  var rateInputEl = document.getElementById('expenseRateOverride');
+  var manualRate = rateInputEl ? parseAmountInput(rateInputEl.value) : NaN;
+  var exchangeRate, rateDate;
+  if (!isNaN(manualRate) && manualRate > 0) {
+    exchangeRate = manualRate;
+    rateDate = date || todayStr();
+  } else {
+    exchangeRate = getRateSyncForDate(date);
+    rateDate = (RATE_CACHE[date] && RATE_CACHE[date].date) || (RATE_CACHE[RATE_TODAY_KEY] && RATE_CACHE[RATE_TODAY_KEY].date) || todayStr();
+  }
+
   var record = {
     day: dayNum,
     date: date,
@@ -292,7 +413,10 @@ function submitNewExpense() {
     currency: selectedCurrency,
     place: place || '',
     link: link || '',
-    desc: desc || ''
+    desc: desc || '',
+    // [v3.15] 등록 시점 환율 고정 — 추후 환율 변동에 영향 받지 않음
+    exchangeRate: exchangeRate,
+    exchangeRateDate: rateDate
   };
 
   if (_expenseEditMode && _expenseEditIdx >= 0) {
@@ -313,16 +437,22 @@ function submitNewExpense() {
   document.getElementById('expenseLink').value = '';
   document.getElementById('expenseDesc').value = '';
   document.getElementById('expensePrepayment').checked = false;
+  if (rateInputEl) { rateInputEl.value = ''; delete rateInputEl.dataset.userEdited; }
   document.querySelectorAll('.cat-item').forEach(function(c) { c.classList.remove('selected'); });
   selectedCat = null;
 }
+
+// [v3.15] expense 객체에서 환율 가져오기 (없으면 fallback)
+function expenseRate(ex) { return (ex && ex.exchangeRate && ex.exchangeRate > 0) ? ex.exchangeRate : EUR_TO_KRW; }
 
 // [v3.14] 사용경비 행 클릭 → 상세보기 모달
 function openExpenseDetail(idx) {
   var ex = expenses[idx];
   if (!ex) return;
-  var krw = ex.currency === 'EUR' ? Math.round(ex.amount * EUR_TO_KRW) : Math.round(ex.amount);
-  var eur = ex.currency === 'EUR' ? ex.amount : (ex.amount / EUR_TO_KRW);
+  // [v3.15] 등록 시점 환율 사용 (없으면 fallback)
+  var rate = expenseRate(ex);
+  var krw = ex.currency === 'EUR' ? Math.round(ex.amount * rate) : Math.round(ex.amount);
+  var eur = ex.currency === 'EUR' ? ex.amount : (ex.amount / rate);
   var dayLabel = ex.day === 0 ? '💳 사전결제' : ('DAY ' + ex.day);
   var html = '';
   html += '<div class="detail-row"><span class="detail-label">일자</span><span class="detail-val">' + dayLabel + (ex.date ? ' · ' + ex.date : '') + '</span></div>';
@@ -332,6 +462,9 @@ function openExpenseDetail(idx) {
   if (ex.currency === 'KRW') {
     html += '<div class="detail-row"><span class="detail-label">금액 (EUR 환산)</span><span class="detail-val">€' + eur.toFixed(2) + '</span></div>';
   }
+  // [v3.15] 사용 환율 표시
+  var rateSrcNote = ex.exchangeRate ? ('등록일 환율 · ' + (ex.exchangeRateDate || '?')) : '기본값(폴백)';
+  html += '<div class="detail-row"><span class="detail-label">적용 환율</span><span class="detail-val">1 EUR = ' + rate.toFixed(2) + ' KRW <span style="color:var(--text-secondary);font-size:11px;">(' + rateSrcNote + ')</span></span></div>';
   html += '<div class="detail-row"><span class="detail-label">사용처</span><span class="detail-val">' + (ex.place || '-') + '</span></div>';
   html += '<div class="detail-row"><span class="detail-label">링크</span><span class="detail-val">' + (ex.link ? '<a href="' + ex.link + '" target="_blank" rel="noopener">' + ex.link + '</a>' : '-') + '</span></div>';
   if (ex.desc) {
@@ -2538,6 +2671,8 @@ document.addEventListener('DOMContentLoaded', function() {
   renderExpensePanel();
   renderInfoPanel();
   updateExpenseUI();
+  // [v3.15] 페이지 로드 시 오늘 환율 백그라운드 prefetch — 첫 등록 시 정확한 환율 사용 가능
+  getExchangeRate(RATE_TODAY_KEY).then(function() { /* 캐시에만 적재, UI 영향 없음 */ });
 });
 
 // ===== THEME MANAGEMENT =====
@@ -3395,7 +3530,9 @@ function updateExpenseTable() {
 
   // [v3.14] 행 클릭 → 상세보기, 삭제 버튼은 stopPropagation으로 행 클릭 차단
   tbody.innerHTML = filtered.map(function(exp) {
-    var krw = exp.currency === 'EUR' ? exp.amount * EUR_TO_KRW : exp.amount;
+    // [v3.15] 등록 시점 환율 사용
+    var rate = expenseRate(exp);
+    var krw = exp.currency === 'EUR' ? exp.amount * rate : exp.amount;
     var dayLabel = exp.day === 0 ? '💳 사전결제' : ('DAY ' + exp.day);
     var amountLabel = (exp.currency === 'EUR' ? '€' : '₩') + (exp.amount || 0).toLocaleString();
     var realIdx = expenses.indexOf(exp);
@@ -3481,12 +3618,14 @@ function fmtKrwShort(n) {
 }
 
 function updateExpenseUI() {
-  // [v3.14.1] 실제 사용 합계 — EUR/KRW 양방향 환산해 합산 (KRW 입력분도 EUR 합계에 포함)
+  // [v3.15] 실제 사용 합계 — 각 expense의 고정 환율(exchangeRate) 사용, 없으면 fallback
   const totalEUR = expenses.reduce(function(s, e) {
-    return s + (e.currency === 'EUR' ? e.amount : e.amount / EUR_TO_KRW);
+    var r = expenseRate(e);
+    return s + (e.currency === 'EUR' ? e.amount : e.amount / r);
   }, 0);
   const totalKRW = expenses.reduce(function(s, e) {
-    return s + (e.currency === 'EUR' ? e.amount * EUR_TO_KRW : e.amount);
+    var r = expenseRate(e);
+    return s + (e.currency === 'EUR' ? e.amount * r : e.amount);
   }, 0);
 
   document.getElementById('totalEUR').textContent = `€${totalEUR.toFixed(2)}`;
@@ -3527,8 +3666,9 @@ function updateExpenseUI() {
   // Update day expense cards
   DAYS.forEach(function(day) {
     var dayExpenses = expenses.filter(function(e) { return String(e.day) === String(day.num); });
-    var dayEUR = dayExpenses.filter(function(e) { return e.currency === 'EUR'; }).reduce(function(s, e) { return s + e.amount; }, 0);
-    var dayKRW = dayExpenses.reduce(function(s, e) { return s + (e.currency === 'EUR' ? e.amount * EUR_TO_KRW : e.amount); }, 0);
+    // [v3.15] 등록 시점 환율 사용
+    var dayEUR = dayExpenses.reduce(function(s, e) { var r = expenseRate(e); return s + (e.currency === 'EUR' ? e.amount : e.amount / r); }, 0);
+    var dayKRW = dayExpenses.reduce(function(s, e) { var r = expenseRate(e); return s + (e.currency === 'EUR' ? e.amount * r : e.amount); }, 0);
 
     var dayActualEl = document.getElementById('dayActual' + day.num);
     var dayBarEl = document.getElementById('dayBar' + day.num);
@@ -3566,11 +3706,25 @@ function renderInfoPanel() {
   INFO_DATA.forEach(info => {
     const card = document.createElement('div');
     card.className = 'info-card';
+    // [v3.15] 환율 카드는 placeholder + 비동기 갱신 — id로 식별
+    var pId = (info.title === '환율') ? ' id="infoRateDesc"' : '';
     card.innerHTML = `
       <h3>${info.emoji} ${info.title}</h3>
-      <p>${info.desc}</p>
+      <p${pId}>${info.desc}</p>
     `;
     grid.appendChild(card);
+  });
+  // [v3.15] 환율 카드 비동기 갱신 — 오늘 환율 자동 조회 후 표시
+  refreshInfoRateCard();
+}
+
+// [v3.15] INFO 패널 환율 카드 동적 갱신
+function refreshInfoRateCard() {
+  var el = document.getElementById('infoRateDesc');
+  if (!el) return;
+  getExchangeRate(RATE_TODAY_KEY).then(function(r) {
+    var srcLabel = { cache: '캐시', frankfurter: 'ECB', 'open-er': 'open.er-api', fallback: '폴백' }[r.source] || r.source;
+    el.textContent = '1 EUR ≈ ' + r.rate.toFixed(2).replace(/\.00$/, '') + ' KRW (' + r.date + ', ' + srcLabel + ')';
   });
 }
 
@@ -4339,7 +4493,7 @@ document.addEventListener('DOMContentLoaded', function() {
     <button class="modal-close" onclick="closeModal('expense')">&times;</button>
     <h2 id="expense-modal-title">💸 사용경비 추가</h2>
     <label class="form-label">사용일자</label>
-    <input type="date" class="form-input" id="expenseDate" value="2026-06-02" oninput="updateDayPreview()" onchange="updateDayPreview()">
+    <input type="date" class="form-input" id="expenseDate" value="2026-06-02" oninput="updateDayPreview();prefetchRate(this.value)" onchange="updateDayPreview();prefetchRate(this.value)">
     <!-- [v3.14.2] DAY 자동 분류 미리보기 — 사용일자/사전결제 토글 변경 시 실시간 갱신 -->
     <div id="expenseDayPreview" class="day-preview preview-info">
       <span class="preview-icon">📅</span><span class="preview-text">사용일자를 입력하면 자동으로 DAY가 계산됩니다</span>
@@ -4378,6 +4532,10 @@ document.addEventListener('DOMContentLoaded', function() {
     <!-- [v3.14] 메모 필드 신설 — 상세보기에서 노출 -->
     <label class="form-label">메모 (선택사항)</label>
     <input type="text" class="form-input" id="expenseDesc" placeholder="간단한 메모">
+    <!-- [v3.15] 환율 수동 재정의 (선택) — 비워두면 등록일자 환율 자동 사용 -->
+    <label class="form-label">환율 수동 재정의 <span class="form-optional">(선택, 1 EUR = ? KRW)</span></label>
+    <input type="text" inputmode="decimal" class="form-input" id="expenseRateOverride" placeholder="자동 (비워두면 등록일 환율)" oninput="this.dataset.userEdited='1'">
+    <div class="conversion-hint" id="expenseRateHint">자동 환율: 로딩 중...</div>
     <button class="form-btn" id="expenseSubmitBtn" onclick="submitNewExpense()">저장하기</button>
   </div>
 </div>
