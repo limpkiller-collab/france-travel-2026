@@ -1,5 +1,10 @@
 <!DOCTYPE html>
 <!-- Version History (최신순) -->
+<!-- v3.14 (2026.05.03) : [버그수정] 사용경비 금액에 콤마 입력 시 parseFloat가 콤마 앞 숫자만 인식하던 버그 수정 (콤마 자동 포맷 + 저장 시 sanitize)
+                          [버그수정] 일자 필터 active 토글이 textContent.includes('DAY 1') 방식이라 DAY 10/11/12 동시 활성화되던 버그 수정 (data-day 속성 매칭)
+                          [기능] 사전결제 탭 신설 — 사용일자 < 2026-06-02 자동 분류 + 모달 토글로 명시 선택 가능 (day=0)
+                          [기능] 등록된 경비 행 클릭 시 상세보기 모달 + 수정 기능 (기존 모달 재사용, 편집 모드)
+                          [정리] 중복 정의된 submitNewExpense / updateConversion / submitNewFood / submitNewCafe 함수 제거 -->
 <!-- v3.13 (2026.04.02) : [기능] 숙소 탭 체크인 날짜 기준 오름차순 정렬, 좌우 터치/마우스 스와이프 지원 추가 -->
 <!-- v3.12.1 (2026.04.01) : [버그수정] submitNewFood/submitNewCafe 중복 함수가 JS hoisting으로 구버전 우선 적용 → 수정 시 신규 추가되고 subName·hours·mapUrl·inSchedule 필드 누락 문제 수정 -->
 <!-- v3.12 (2026.04.01) : 맛집/카페 모달 필드 확장(subName·배지·영업시간·구글지도URL·일정연동), 관광스팟 추가/수정 모달 신규, 맛집/카페/관광스팟 수정 기능 추가 -->
@@ -70,11 +75,7 @@ function openModal(name) {
   if (name === 'schedule') {
     document.getElementById('scheduleDay').value = currentDay;
   }
-  if (name === 'expense') {
-    // Set date to current day's date
-    var dayData = DAYS.find(d => d.num === currentDay);
-    if (dayData) document.getElementById('expenseDate').value = dayData.date;
-  }
+  // [v3.14] 'expense' 일자 자동설정 로직은 openExpenseModal()로 이전 — 편집 모드 일자 보존
 }
 function closeModal(name) {
   document.getElementById('modal-' + name).classList.remove('open');
@@ -98,8 +99,25 @@ function setCurrency(curr) {
   updateConversion();
 }
 
+// [v3.14] 콤마(천단위) 입력 sanitize 헬퍼
+function parseAmountInput(str) {
+  if (str === null || str === undefined) return NaN;
+  return parseFloat(String(str).replace(/[,\s]/g, ''));
+}
+
+// [v3.14] 입력 시 천단위 콤마 자동 포맷 (소수점/마이너스 허용)
+function formatExpenseAmount(el) {
+  var raw = String(el.value || '').replace(/[^0-9.\-]/g, '');
+  if (!raw) { el.value = ''; updateConversion(); return; }
+  // 분리: 정수부 / 소수부
+  var parts = raw.split('.');
+  var intPart = parts[0].replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1,');
+  el.value = parts.length > 1 ? intPart + '.' + parts.slice(1).join('') : intPart;
+  updateConversion();
+}
+
 function updateConversion() {
-  var val = parseFloat(document.getElementById('expenseAmount').value) || 0;
+  var val = parseAmountInput(document.getElementById('expenseAmount').value) || 0;
   var hint = document.getElementById('conversionHint');
   if (selectedCurrency === 'EUR') {
     hint.textContent = 'EUR → ' + Math.round(val * EUR_TO_KRW).toLocaleString() + ' KRW';
@@ -143,38 +161,154 @@ document.addEventListener('click', function(e) {
   }
 });
 
+// [v3.14] 사전결제 자동 판별 — 사용일자가 첫째날(2026-06-02) 이전이면 true
+function isPrepaymentDate(dateStr) {
+  if (!dateStr) return false;
+  return DAYS.length > 0 && dateStr < DAYS[0].date;
+}
+
+// [v3.14] 사용경비 모달: 편집 모드 상태 변수
+var _expenseEditMode = false;
+var _expenseEditIdx = -1;
+var _expenseDescChanged = false; // 메모 입력 추적용
+
+// [v3.14] 사용경비 모달 열기 — editIdx 주면 편집, 없으면 신규
+function openExpenseModal(editIdx) {
+  // 폼 리셋
+  document.querySelectorAll('#catGrid .cat-item').forEach(c => c.classList.remove('selected'));
+  selectedCat = null;
+  document.getElementById('expenseAmount').value = '';
+  document.getElementById('expensePlace').value = '';
+  document.getElementById('expenseLink').value = '';
+  document.getElementById('expenseDesc').value = '';
+  document.getElementById('expensePrepayment').checked = false;
+  setCurrency('EUR');
+
+  if (editIdx !== undefined && editIdx >= 0 && expenses[editIdx]) {
+    _expenseEditMode = true;
+    _expenseEditIdx = editIdx;
+    var ex = expenses[editIdx];
+    document.getElementById('expenseDate').value = ex.date || (DAYS[0] && DAYS[0].date) || '';
+    document.getElementById('expenseAmount').value = (ex.amount || 0).toLocaleString();
+    document.getElementById('expensePlace').value = ex.place || '';
+    document.getElementById('expenseLink').value = ex.link || '';
+    document.getElementById('expenseDesc').value = ex.desc || '';
+    document.getElementById('expensePrepayment').checked = (ex.day === 0);
+    setCurrency(ex.currency || 'EUR');
+    selectedCat = ex.category || null;
+    if (selectedCat) {
+      var cat = document.querySelector('#catGrid .cat-item[data-cat="' + selectedCat + '"]');
+      if (cat) cat.classList.add('selected');
+    }
+    document.getElementById('expense-modal-title').textContent = '💸 사용경비 수정';
+    document.getElementById('expenseSubmitBtn').textContent = '수정 저장';
+  } else {
+    _expenseEditMode = false;
+    _expenseEditIdx = -1;
+    // 기본 일자: 현재 표시 중인 day의 date (없으면 첫째날)
+    var dayData = DAYS.find(function(d) { return d.num === currentDay; }) || DAYS[0];
+    if (dayData) document.getElementById('expenseDate').value = dayData.date;
+    document.getElementById('expense-modal-title').textContent = '💸 사용경비 추가';
+    document.getElementById('expenseSubmitBtn').textContent = '저장하기';
+  }
+  updateConversion();
+  openModal('expense');
+}
+
 function submitNewExpense() {
   var date = document.getElementById('expenseDate').value;
-  var amount = parseFloat(document.getElementById('expenseAmount').value);
+  // [v3.14] parseFloat 직전에 콤마/공백 제거 — "2,280,000" → 2280000
+  var amount = parseAmountInput(document.getElementById('expenseAmount').value);
   var place = document.getElementById('expensePlace').value;
   var link = document.getElementById('expenseLink').value;
+  var desc = document.getElementById('expenseDesc').value;
+  var isPrepay = document.getElementById('expensePrepayment').checked;
 
-  if (!selectedCat || !amount) { alert('카테고리와 금액을 입력해주세요.'); return; }
+  if (!selectedCat || !amount || isNaN(amount) || amount <= 0) {
+    alert('카테고리와 금액을 입력해주세요.'); return;
+  }
 
-  // Determine which day
-  var dayNum = 0;
-  DAYS.forEach(d => { if (d.date === date) dayNum = d.num; });
+  // [v3.14] day 결정: 사전결제 토글 ON 또는 자동 판별 시 day=0, 아니면 매칭 일자
+  var dayNum;
+  if (isPrepay || isPrepaymentDate(date)) {
+    dayNum = 0;
+  } else {
+    dayNum = 0;
+    DAYS.forEach(function(d) { if (d.date === date) dayNum = d.num; });
+    if (dayNum === 0) {
+      // 매칭 안되면 사전결제로 분류 (날짜 미입력 등 예외 케이스)
+      // 단 dayNum=0 자체가 사전결제이므로 그대로 둠
+    }
+  }
 
-  expenses.push({
-    day: dayNum || 1,
+  var record = {
+    day: dayNum,
     date: date,
     category: selectedCat,
     amount: amount,
     currency: selectedCurrency,
     place: place || '',
-    link: link || ''
-  });
+    link: link || '',
+    desc: desc || ''
+  };
+
+  if (_expenseEditMode && _expenseEditIdx >= 0) {
+    expenses[_expenseEditIdx] = record;
+  } else {
+    expenses.push(record);
+  }
 
   saveToStorage();
   updateExpenseUI();
   closeModal('expense');
 
-  // Reset form
+  // Reset
+  _expenseEditMode = false;
+  _expenseEditIdx = -1;
   document.getElementById('expenseAmount').value = '';
   document.getElementById('expensePlace').value = '';
   document.getElementById('expenseLink').value = '';
-  document.querySelectorAll('.cat-item').forEach(c => c.classList.remove('selected'));
+  document.getElementById('expenseDesc').value = '';
+  document.getElementById('expensePrepayment').checked = false;
+  document.querySelectorAll('.cat-item').forEach(function(c) { c.classList.remove('selected'); });
   selectedCat = null;
+}
+
+// [v3.14] 사용경비 행 클릭 → 상세보기 모달
+function openExpenseDetail(idx) {
+  var ex = expenses[idx];
+  if (!ex) return;
+  var krw = ex.currency === 'EUR' ? Math.round(ex.amount * EUR_TO_KRW) : Math.round(ex.amount);
+  var eur = ex.currency === 'EUR' ? ex.amount : (ex.amount / EUR_TO_KRW);
+  var dayLabel = ex.day === 0 ? '💳 사전결제' : ('DAY ' + ex.day);
+  var html = '';
+  html += '<div class="detail-row"><span class="detail-label">일자</span><span class="detail-val">' + dayLabel + (ex.date ? ' · ' + ex.date : '') + '</span></div>';
+  html += '<div class="detail-row"><span class="detail-label">카테고리</span><span class="detail-val">' + getCategoryLabel(ex.category) + '</span></div>';
+  html += '<div class="detail-row"><span class="detail-label">금액 (' + ex.currency + ')</span><span class="detail-val">' + (ex.currency === 'EUR' ? '€' : '₩') + ex.amount.toLocaleString() + '</span></div>';
+  html += '<div class="detail-row"><span class="detail-label">금액 (KRW 환산)</span><span class="detail-val">₩' + krw.toLocaleString() + '</span></div>';
+  if (ex.currency === 'KRW') {
+    html += '<div class="detail-row"><span class="detail-label">금액 (EUR 환산)</span><span class="detail-val">€' + eur.toFixed(2) + '</span></div>';
+  }
+  html += '<div class="detail-row"><span class="detail-label">사용처</span><span class="detail-val">' + (ex.place || '-') + '</span></div>';
+  html += '<div class="detail-row"><span class="detail-label">링크</span><span class="detail-val">' + (ex.link ? '<a href="' + ex.link + '" target="_blank" rel="noopener">' + ex.link + '</a>' : '-') + '</span></div>';
+  if (ex.desc) {
+    html += '<div class="detail-row"><span class="detail-label">메모</span><span class="detail-val">' + ex.desc + '</span></div>';
+  }
+  document.getElementById('expenseDetailBody').innerHTML = html;
+  // 수정·삭제 버튼 핸들러 — 클로저로 idx 캡처
+  document.getElementById('expenseDetailEdit').onclick = function() {
+    closeModal('expenseDetail');
+    setTimeout(function() { openExpenseModal(idx); }, 80);
+  };
+  document.getElementById('expenseDetailDelete').onclick = function() {
+    closeModal('expenseDetail');
+    showConfirm(function() {
+      expenses.splice(idx, 1);
+      saveToStorage();
+      updateExpenseUI();
+    });
+  };
+  openModal('expenseDetail');
 }
 
 
@@ -1691,6 +1825,40 @@ document.addEventListener('DOMContentLoaded', function() {
     .currency-btn.active { background: #3b82f6; color: #fff; }
     .conversion-hint { font-size: 12px; color: var(--text-secondary); margin-top: 6px; }
 
+    /* ===== [v3.14] PREPAYMENT TOGGLE ===== */
+    .prepayment-toggle {
+      display: flex; align-items: center; gap: 8px; margin-top: 10px;
+      padding: 10px 12px; border-radius: 8px; background: var(--surface-hover);
+      border: 1px solid var(--border); cursor: pointer; font-size: 13px; font-weight: 500;
+      color: var(--text); user-select: none;
+    }
+    .prepayment-toggle input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: #3b82f6; }
+
+    /* ===== [v3.14] EXPENSE DETAIL MODAL ===== */
+    .detail-body { margin-top: 12px; display: flex; flex-direction: column; gap: 0; }
+    .detail-row {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); font-size: 14px;
+    }
+    .detail-row:last-child { border-bottom: none; }
+    .detail-label {
+      flex: 0 0 130px; font-size: 12px; font-weight: 600;
+      color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.02em;
+    }
+    .detail-val { flex: 1; color: var(--text); word-break: break-all; text-align: right; }
+    .detail-val a { color: #3b82f6; text-decoration: underline; }
+    .detail-actions { display: flex; gap: 8px; margin-top: 20px; }
+    .detail-actions .form-btn { margin-top: 0; }
+    .form-btn.btn-secondary { background: var(--surface-hover); color: var(--text); border: 1px solid var(--border); }
+    .form-btn.btn-secondary:hover { background: var(--border); opacity: 1; }
+    .form-btn.btn-danger-soft { background: rgba(244,63,94,0.12); color: var(--negative); border: 1px solid rgba(244,63,94,0.25); }
+    .form-btn.btn-danger-soft:hover { background: rgba(244,63,94,0.2); opacity: 1; }
+
+    /* ===== [v3.14] CLICKABLE EXPENSE ROW ===== */
+    .expense-row { cursor: pointer; transition: background 0.15s; }
+    .expense-row:hover { background: var(--surface-hover); }
+    .expense-row td { vertical-align: middle; }
+
     /* ===== PLACE AUTOCOMPLETE ===== */
     .autocomplete-wrap { position: relative; }
     .autocomplete-list {
@@ -1813,7 +1981,7 @@ document.addEventListener('DOMContentLoaded', function() {
 <!-- ===== SCHEDULE PANEL ===== -->
 <div class="main-panel active" id="panel-schedule">
   <div class="crud-bar">
-    <button class="btn-add" onclick="openModal('expense')"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 💸 사용경비</button>
+    <button class="btn-add" onclick="openExpenseModal()"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 💸 사용경비</button>
     <button class="btn-add" onclick="openModal('schedule')"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 📅 일정 추가</button>
   </div>
   <div class="day-tabs" role="tablist" id="dayTabs"></div>
@@ -1885,7 +2053,7 @@ document.addEventListener('DOMContentLoaded', function() {
 <!-- ===== EXPENSE PANEL ===== -->
 <div class="main-panel" id="panel-expense">
   <div class="crud-bar" style="margin-bottom:0;">
-    <button class="btn-add" onclick="openModal('expense')"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 💸 사용경비 추가</button>
+    <button class="btn-add" onclick="openExpenseModal()"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 💸 사용경비 추가</button>
   </div>
   <h2>💸 사용경비</h2>
   <p style="color:var(--text-secondary); margin-bottom:16px;">여행에서 사용한 실제 경비를 추적하세요</p>
@@ -1916,8 +2084,8 @@ document.addEventListener('DOMContentLoaded', function() {
       <tr>
         <th>사용일자</th>
         <th>카테고리</th>
-        <th>금액 (EUR)</th>
-        <th>금액 (KRW)</th>
+        <th>금액</th>
+        <th>금액 (KRW 환산)</th>
         <th>사용처</th>
         <th>링크</th>
         <th>삭제</th>
@@ -3105,50 +3273,48 @@ function renderBudgetPanel() {
 
 // ===== EXPENSE PANEL =====
 function renderExpensePanel() {
-  // Date filters
+  // [v3.14] Date filters — data-day 속성으로 정확 매칭, 사전결제(💳) 버튼 신설
   const dateFilters = document.getElementById('expenseDateFilters');
-  dateFilters.innerHTML = '<button class="region-btn active" onclick="filterExpenseByDate(\'all\')">전체</button>';
-  DAYS.forEach(day => {
-    dateFilters.innerHTML += `<button class="region-btn" onclick="filterExpenseByDate('${day.num}')">DAY ${day.num} (${day.date})</button>`;
+  var dfHtml = '';
+  dfHtml += '<button class="region-btn active" data-day="all" onclick="filterExpenseByDate(\'all\')">전체</button>';
+  dfHtml += '<button class="region-btn" data-day="0" onclick="filterExpenseByDate(\'0\')">💳 사전결제</button>';
+  DAYS.forEach(function(day) {
+    dfHtml += '<button class="region-btn" data-day="' + day.num + '" onclick="filterExpenseByDate(\'' + day.num + '\')">DAY ' + day.num + ' (' + day.date + ')</button>';
   });
+  dateFilters.innerHTML = dfHtml;
 
   // Category filters
   const catFilters = document.getElementById('expenseCategoryFilters');
   catFilters.innerHTML = `
-    <button class="region-btn active" onclick="filterExpenseByCategory('all')">전체</button>
-    <button class="region-btn" onclick="filterExpenseByCategory('flight')">✈️ 항공</button>
-    <button class="region-btn" onclick="filterExpenseByCategory('hotel')">🏨 숙소</button>
-    <button class="region-btn" onclick="filterExpenseByCategory('meal')">🍜 식사</button>
-    <button class="region-btn" onclick="filterExpenseByCategory('cafe')">☕ 카페</button>
-    <button class="region-btn" onclick="filterExpenseByCategory('transport')">🚌 교통</button>
-    <button class="region-btn" onclick="filterExpenseByCategory('activity')">🎡 관광</button>
-    <button class="region-btn" onclick="filterExpenseByCategory('souvenir')">🎁 기념품</button>
-    <button class="region-btn" onclick="filterExpenseByCategory('etc')">📦 기타</button>
+    <button class="region-btn active" data-cat="all" onclick="filterExpenseByCategory('all')">전체</button>
+    <button class="region-btn" data-cat="flight" onclick="filterExpenseByCategory('flight')">✈️ 항공</button>
+    <button class="region-btn" data-cat="hotel" onclick="filterExpenseByCategory('hotel')">🏨 숙소</button>
+    <button class="region-btn" data-cat="meal" onclick="filterExpenseByCategory('meal')">🍜 식사</button>
+    <button class="region-btn" data-cat="cafe" onclick="filterExpenseByCategory('cafe')">☕ 카페</button>
+    <button class="region-btn" data-cat="transport" onclick="filterExpenseByCategory('transport')">🚌 교통</button>
+    <button class="region-btn" data-cat="activity" onclick="filterExpenseByCategory('activity')">🎡 관광</button>
+    <button class="region-btn" data-cat="souvenir" onclick="filterExpenseByCategory('souvenir')">🎁 기념품</button>
+    <button class="region-btn" data-cat="etc" onclick="filterExpenseByCategory('etc')">📦 기타</button>
   `;
 
   updateExpenseTable();
 }
 
+// [v3.14] textContent 부분일치 → data-day 정확 매칭으로 변경
 function filterExpenseByDate(dayNum) {
   expenseFilterDay = dayNum;
   updateExpenseTable();
-  document.querySelectorAll('#expenseDateFilters .region-btn').forEach(btn => {
-    btn.classList.toggle('active',
-      (dayNum === 'all' && btn.textContent.includes('전체')) ||
-      (dayNum !== 'all' && btn.textContent.includes(`DAY ${dayNum}`))
-    );
+  document.querySelectorAll('#expenseDateFilters .region-btn').forEach(function(btn) {
+    btn.classList.toggle('active', btn.getAttribute('data-day') === String(dayNum));
   });
 }
 
+// [v3.14] 카테고리 필터도 같은 패턴으로 안정화
 function filterExpenseByCategory(cat) {
   expenseFilterCategory = cat;
   updateExpenseTable();
-  document.querySelectorAll('#expenseCategoryFilters .region-btn').forEach(btn => {
-    btn.classList.toggle('active',
-      (cat === 'all' && btn.textContent.includes('전체')) ||
-      (cat !== 'all' && btn.textContent === cat) ||
-      (cat !== 'all' && btn.textContent.includes(getCategoryLabel(cat)))
-    );
+  document.querySelectorAll('#expenseCategoryFilters .region-btn').forEach(function(btn) {
+    btn.classList.toggle('active', btn.getAttribute('data-cat') === String(cat));
   });
 }
 
@@ -3157,10 +3323,10 @@ function updateExpenseTable() {
 
   let filtered = expenses;
   if (expenseFilterDay !== 'all') {
-    filtered = filtered.filter(e => e.day == expenseFilterDay);
+    filtered = filtered.filter(function(e) { return String(e.day) === String(expenseFilterDay); });
   }
   if (expenseFilterCategory !== 'all') {
-    filtered = filtered.filter(e => e.category === expenseFilterCategory);
+    filtered = filtered.filter(function(e) { return e.category === expenseFilterCategory; });
   }
 
   if (filtered.length === 0) {
@@ -3168,19 +3334,22 @@ function updateExpenseTable() {
     return;
   }
 
-  tbody.innerHTML = filtered.map((exp, idx) => {
-    const krw = exp.currency === 'EUR' ? exp.amount * EUR_TO_KRW : exp.amount;
-    return `
-      <tr>
-        <td>DAY ${exp.day}</td>
-        <td>${getCategoryLabel(exp.category)}</td>
-        <td>${exp.currency === 'EUR' ? '€' : ''}${exp.amount}</td>
-        <td>₩${Math.round(krw).toLocaleString()}</td>
-        <td>${exp.place}</td>
-        <td>${exp.link ? `<a href="${exp.link}" target="_blank">링크</a>` : '-'}</td>
-        <td><button class="btn btn-danger" onclick="deleteExpense(${expenses.indexOf(exp)})">삭제</button></td>
-      </tr>
-    `;
+  // [v3.14] 행 클릭 → 상세보기, 삭제 버튼은 stopPropagation으로 행 클릭 차단
+  tbody.innerHTML = filtered.map(function(exp) {
+    var krw = exp.currency === 'EUR' ? exp.amount * EUR_TO_KRW : exp.amount;
+    var dayLabel = exp.day === 0 ? '💳 사전결제' : ('DAY ' + exp.day);
+    var amountLabel = (exp.currency === 'EUR' ? '€' : '₩') + (exp.amount || 0).toLocaleString();
+    var realIdx = expenses.indexOf(exp);
+    return ''
+      + '<tr class="expense-row" onclick="openExpenseDetail(' + realIdx + ')">'
+      + '<td>' + dayLabel + '</td>'
+      + '<td>' + getCategoryLabel(exp.category) + '</td>'
+      + '<td>' + amountLabel + '</td>'
+      + '<td>₩' + Math.round(krw).toLocaleString() + '</td>'
+      + '<td>' + (exp.place || '-') + '</td>'
+      + '<td>' + (exp.link ? '<a href="' + exp.link + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">링크</a>' : '-') + '</td>'
+      + '<td><button class="btn btn-danger" onclick="event.stopPropagation();deleteExpense(' + realIdx + ')">삭제</button></td>'
+      + '</tr>';
   }).join('');
 }
 
@@ -3793,11 +3962,7 @@ function openModal(name) {
   if (name === 'schedule') {
     document.getElementById('scheduleDay').value = currentDay;
   }
-  if (name === 'expense') {
-    // Set date to current day's date
-    var dayData = DAYS.find(d => d.num === currentDay);
-    if (dayData) document.getElementById('expenseDate').value = dayData.date;
-  }
+  // [v3.14] 'expense' 일자 자동설정 로직은 openExpenseModal()로 이전 — 편집 모드 일자 보존
 }
 function closeModal(name) {
   document.getElementById('modal-' + name).classList.remove('open');
@@ -3821,146 +3986,7 @@ function setCurrency(curr) {
   updateConversion();
 }
 
-function updateConversion() {
-  var val = parseFloat(document.getElementById('expenseAmount').value) || 0;
-  var hint = document.getElementById('conversionHint');
-  if (selectedCurrency === 'EUR') {
-    hint.textContent = 'EUR → ' + Math.round(val * EUR_TO_KRW).toLocaleString() + ' KRW';
-  } else {
-    hint.textContent = 'KRW → €' + (val / EUR_TO_KRW).toFixed(2) + ' EUR';
-  }
-}
-
-// Place autocomplete
-var FRANCE_PLACES = [
-  'Vieux-Port 마르세유','노트르담 드 라 가르드','Chez Étienne','La Boîte à Sardine',
-  '고르드 (Gordes)','루시용 (Roussillon)','발랑솔 (Valensole)','무스티에생트마리',
-  '베르동 협곡','생폴드방스','빌프랑슈쉬르메르','에즈 (Èze)','망통 (Menton)',
-  '니스 구시가지','살레야 꽃시장','프롬나드 데 장글레','마세나 광장',
-  'Chez Thérésa','Chez Pipo','Oui Jelato','에펠탑','루브르 박물관',
-  '샹젤리제','몽마르트르','사크레쾨르','오르세 미술관','마레 지구',
-  '생제르맹 데 프레','Café de Flore','Petit Vendôme','Mamiche',
-  'TGV 기차역','CDG 공항','니스역','파리 리옹역'
-];
-
-function showPlaceAutocomplete(query) {
-  var list = document.getElementById('placeAutocomplete');
-  if (!query || query.length < 1) { list.classList.remove('show'); return; }
-  var matches = FRANCE_PLACES.filter(p => p.toLowerCase().includes(query.toLowerCase()));
-  if (matches.length === 0) { list.classList.remove('show'); return; }
-  list.innerHTML = matches.slice(0, 8).map(p =>
-    '<div class="autocomplete-item" onclick="pickPlace(this)">' + p + '</div>'
-  ).join('');
-  list.classList.add('show');
-}
-
-function pickPlace(el) {
-  document.getElementById('expensePlace').value = el.textContent;
-  document.getElementById('placeAutocomplete').classList.remove('show');
-}
-
-// Close autocomplete on outside click
-document.addEventListener('click', function(e) {
-  if (!e.target.closest('.autocomplete-wrap')) {
-    document.querySelectorAll('.autocomplete-list').forEach(l => l.classList.remove('show'));
-  }
-});
-
-function submitNewExpense() {
-  var date = document.getElementById('expenseDate').value;
-  var amount = parseFloat(document.getElementById('expenseAmount').value);
-  var place = document.getElementById('expensePlace').value;
-  var link = document.getElementById('expenseLink').value;
-
-  if (!selectedCat || !amount) { alert('카테고리와 금액을 입력해주세요.'); return; }
-
-  // Determine which day
-  var dayNum = 0;
-  DAYS.forEach(d => { if (d.date === date) dayNum = d.num; });
-
-  expenses.push({
-    day: dayNum || 1,
-    date: date,
-    category: selectedCat,
-    amount: amount,
-    currency: selectedCurrency,
-    place: place || '',
-    link: link || ''
-  });
-
-  saveToStorage();
-  updateExpenseUI();
-  closeModal('expense');
-
-  // Reset form
-  document.getElementById('expenseAmount').value = '';
-  document.getElementById('expensePlace').value = '';
-  document.getElementById('expenseLink').value = '';
-  document.querySelectorAll('.cat-item').forEach(c => c.classList.remove('selected'));
-  selectedCat = null;
-}
-
-
-// ===== FOOD/CAFE CRUD =====
-function submitNewFood() {
-  var name = document.getElementById('foodName').value.trim();
-  if (!name) { alert('이름을 입력해주세요.'); return; }
-  var item = {
-    name: name,
-    region: document.getElementById('foodRegion').value,
-    badge: document.getElementById('foodBadge').value,
-    desc: document.getElementById('foodDesc').value.trim(),
-    reco: document.getElementById('foodReco').value.trim(),
-    location: document.getElementById('foodLocation').value.trim(),
-    price: parseFloat(document.getElementById('foodPrice').value) || 15
-  };
-  var sub = document.getElementById('foodSubName').value.trim();
-  var hrs = document.getElementById('foodHours').value.trim();
-  var map = document.getElementById('foodMapUrl').value.trim();
-  var sch = document.getElementById('foodInSchedule').value.trim();
-  if (sub) item.subName = sub;
-  if (hrs) item.hours = hrs;
-  if (map) item.mapUrl = map;
-  if (sch) item.inSchedule = sch;
-
-  if (_foodEditMode && _foodEditIdx >= 0) {
-    FOOD_DATA[_foodEditIdx] = item;
-  } else {
-    FOOD_DATA.push(item);
-  }
-  renderFoodPanel(); addMoreButtons(); saveToStorage(); closeModal('food');
-  _foodEditMode = false; _foodEditIdx = -1;
-}
-
-function submitNewCafe() {
-  var name = document.getElementById('cafeName').value.trim();
-  if (!name) { alert('이름을 입력해주세요.'); return; }
-  var item = {
-    name: name,
-    region: document.getElementById('cafeRegion').value,
-    badge: document.getElementById('cafeBadge').value,
-    desc: document.getElementById('cafeDesc').value.trim(),
-    reco: document.getElementById('cafeReco').value.trim(),
-    location: document.getElementById('cafeLocation').value.trim(),
-    price: parseFloat(document.getElementById('cafePrice').value) || 5
-  };
-  var sub = document.getElementById('cafeSubName').value.trim();
-  var hrs = document.getElementById('cafeHours').value.trim();
-  var map = document.getElementById('cafeMapUrl').value.trim();
-  var sch = document.getElementById('cafeInSchedule').value.trim();
-  if (sub) item.subName = sub;
-  if (hrs) item.hours = hrs;
-  if (map) item.mapUrl = map;
-  if (sch) item.inSchedule = sch;
-
-  if (_cafeEditMode && _cafeEditIdx >= 0) {
-    CAFE_DATA[_cafeEditIdx] = item;
-  } else {
-    CAFE_DATA.push(item);
-  }
-  renderCafePanel(); addMoreButtons(); saveToStorage(); closeModal('cafe');
-  _cafeEditMode = false; _cafeEditIdx = -1;
-}
+// [v3.14] 하단 중복 정의(updateConversion / submitNewExpense / submitNewFood / submitNewCafe) 제거 — 상단 정의 사용
 
 // ===== SCHEDULE CRUD =====
 function submitNewSchedule() {
@@ -4193,9 +4219,14 @@ document.addEventListener('DOMContentLoaded', function() {
 <div class="modal-overlay" id="modal-expense" onclick="if(event.target===this)closeModal('expense')">
   <div class="modal">
     <button class="modal-close" onclick="closeModal('expense')">&times;</button>
-    <h2>💸 사용경비 추가</h2>
+    <h2 id="expense-modal-title">💸 사용경비 추가</h2>
     <label class="form-label">사용일자</label>
     <input type="date" class="form-input" id="expenseDate" value="2026-06-02">
+    <!-- [v3.14] 사전결제 토글 (체크 시 day=0으로 강제 분류) -->
+    <label class="prepayment-toggle">
+      <input type="checkbox" id="expensePrepayment">
+      <span>💳 사전결제로 분류 (날짜 무관)</span>
+    </label>
     <label class="form-label">카테고리</label>
     <div class="cat-grid" id="catGrid">
       <button class="cat-item" data-cat="flight" onclick="selectCat(this)"><span class="cat-icon">✈️</span>항공권</button>
@@ -4212,7 +4243,8 @@ document.addEventListener('DOMContentLoaded', function() {
       <button class="currency-btn active" id="currEUR" onclick="setCurrency('EUR')">EUR</button>
       <button class="currency-btn" id="currKRW" onclick="setCurrency('KRW')">KRW</button>
     </div>
-    <input type="text" class="form-input" id="expenseAmount" placeholder="금액 입력" oninput="updateConversion()" style="margin-top:8px;">
+    <!-- [v3.14] inputmode=numeric + 콤마 자동 포맷 (parseFloat 콤마 버그 차단) -->
+    <input type="text" inputmode="decimal" class="form-input" id="expenseAmount" placeholder="예: 2,280,000" oninput="formatExpenseAmount(this)" style="margin-top:8px;">
     <div class="conversion-hint" id="conversionHint">EUR → 0 KRW</div>
     <label class="form-label">사용처</label>
     <div class="autocomplete-wrap">
@@ -4221,7 +4253,23 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
     <label class="form-label">링크 (선택사항)</label>
     <input type="text" class="form-input" id="expenseLink" placeholder="https://...">
-    <button class="form-btn" onclick="submitNewExpense()">저장하기</button>
+    <!-- [v3.14] 메모 필드 신설 — 상세보기에서 노출 -->
+    <label class="form-label">메모 (선택사항)</label>
+    <input type="text" class="form-input" id="expenseDesc" placeholder="간단한 메모">
+    <button class="form-btn" id="expenseSubmitBtn" onclick="submitNewExpense()">저장하기</button>
+  </div>
+</div>
+
+<!-- [v3.14] 사용경비 상세보기 모달 -->
+<div class="modal-overlay" id="modal-expenseDetail" onclick="if(event.target===this)closeModal('expenseDetail')">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('expenseDetail')">&times;</button>
+    <h2>📄 사용경비 상세</h2>
+    <div id="expenseDetailBody" class="detail-body"></div>
+    <div class="detail-actions">
+      <button class="form-btn btn-secondary" id="expenseDetailEdit">✏️ 수정</button>
+      <button class="form-btn btn-danger-soft" id="expenseDetailDelete">🗑 삭제</button>
+    </div>
   </div>
 </div>
 
