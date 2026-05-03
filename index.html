@@ -1,5 +1,9 @@
 <!DOCTYPE html>
 <!-- Version History (최신순) -->
+<!-- v3.16 (2026.05.03) : [기능] 사용경비 테이블에 합계 행 추가 — 필터링된 데이터 기준 EUR/KRW 합계 (필터 2개 동시 시 교집합 합산)
+                          [기능] 카테고리별 지출 도넛 차트 + DAY별 지출 vs 예산 막대 차트 추가 (Chart.js, 사전결제 제외)
+                          [기능] 사용경비 탭에 JSON 내보내기/불러오기 버튼 노출 (기존 viz-menu 함수 재사용)
+                          [데이터] BUDGET_DATA 숙소: 니스(2박) ₩450,000 추가 / 외식 €20→€40 (520) -->
 <!-- v3.15 (2026.05.03) : [기능] 환율 자동 조회/캐시 시스템 — frankfurter.dev(ECB 공식) + open.er-api.com 폴백 + EUR_TO_KRW 1700 fallback (3단계)
                           [기능] 등록 시점 환율 고정 저장 — expense.exchangeRate / exchangeRateDate 필드 추가, 추후 환율 변동 영향 받지 않음
                           [기능] localStorage 기반 일자별 영구 캐시 (RATE_CACHE_KEY) — 같은 일자 재호출 0회
@@ -59,6 +63,9 @@
 
   <!-- html-to-image CDN -->
   <script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+
+  <!-- [v3.16] Chart.js CDN — 사용경비 차트용 -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
   <!-- Firebase SDK compat -->
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -1800,6 +1807,43 @@ document.addEventListener('DOMContentLoaded', function() {
       color: var(--text-secondary);
     }
 
+    /* ===== [v3.16] EXPENSE CHARTS ===== */
+    .expense-charts {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+      margin: 16px 0 24px;
+    }
+    @media (max-width: 720px) { .expense-charts { grid-template-columns: 1fr; } }
+    .chart-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+      padding: 16px 20px; position: relative;
+    }
+    .chart-title {
+      font-size: 14px; font-weight: 700; margin: 0 0 12px;
+      color: var(--text); display: flex; align-items: center; gap: 8px;
+    }
+    .chart-title .chart-sub {
+      font-size: 11px; font-weight: 500; color: var(--text-secondary);
+      background: var(--surface-hover); padding: 2px 8px; border-radius: 10px;
+    }
+    .chart-wrap { position: relative; height: 220px; }
+    .chart-empty {
+      position: absolute; inset: 50px 16px 16px; display: flex; align-items: center; justify-content: center;
+      color: var(--text-secondary); font-size: 13px;
+      background: var(--surface); border-radius: 8px;
+    }
+
+    /* [v3.16] 합계 행 */
+    .expense-total-row td {
+      background: var(--surface-hover); font-weight: 700; border-top: 2px solid var(--border);
+      padding: 14px 12px;
+    }
+
+    /* [v3.16] secondary 버튼 (사용경비 탭 JSON 버튼) */
+    .btn-add.btn-secondary-soft {
+      background: var(--surface-hover); color: var(--text); border: 1px solid var(--border);
+    }
+    .btn-add.btn-secondary-soft:hover { background: var(--border); }
+
     /* ===== INFO PANEL ===== */
     .info-section h2 {
       font-size: 24px;
@@ -2244,8 +2288,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <!-- ===== EXPENSE PANEL ===== -->
 <div class="main-panel" id="panel-expense">
-  <div class="crud-bar" style="margin-bottom:0;">
+  <div class="crud-bar" style="margin-bottom:0; display:flex; gap:8px; flex-wrap:wrap;">
     <button class="btn-add" onclick="openExpenseModal()"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 💸 사용경비 추가</button>
+    <!-- [v3.16] JSON 내보내기/불러오기 — 사용경비 탭 안에서도 노출 -->
+    <button class="btn-add btn-secondary-soft" onclick="exportData()">📥 JSON 내보내기</button>
+    <button class="btn-add btn-secondary-soft" onclick="importFileClick()">📤 JSON 불러오기</button>
   </div>
   <h2>💸 사용경비</h2>
   <p style="color:var(--text-secondary); margin-bottom:16px;">여행에서 사용한 실제 경비를 추적하세요</p>
@@ -2265,6 +2312,20 @@ document.addEventListener('DOMContentLoaded', function() {
       <div class="progress-bar-mini">
         <div id="budgetProgressBar" style="width:0%;"></div>
       </div>
+    </div>
+  </div>
+
+  <!-- [v3.16] 차트 영역 — 카테고리 도넛 + DAY별 막대 -->
+  <div class="expense-charts">
+    <div class="chart-card">
+      <h3 class="chart-title">카테고리별 지출</h3>
+      <div class="chart-wrap"><canvas id="expenseCategoryChart"></canvas></div>
+      <div id="expenseCategoryEmpty" class="chart-empty" style="display:none;">데이터 없음 · 사용경비를 추가하세요</div>
+    </div>
+    <div class="chart-card">
+      <h3 class="chart-title">DAY별 지출 (예산 대비) <span class="chart-sub">사전결제 제외</span></h3>
+      <div class="chart-wrap"><canvas id="expenseDayChart"></canvas></div>
+      <div id="expenseDayEmpty" class="chart-empty" style="display:none;">DAY별 일정 예산이 없습니다</div>
     </div>
   </div>
 
@@ -2288,6 +2349,15 @@ document.addEventListener('DOMContentLoaded', function() {
         <td colspan="7" class="expense-empty-state">아직 기록된 경비가 없습니다.</td>
       </tr>
     </tbody>
+    <!-- [v3.16] 합계 행 — 필터링된 데이터 기준 -->
+    <tfoot id="expenseTableFoot" style="display:none;">
+      <tr class="expense-total-row">
+        <td colspan="2"><strong>합계 (필터 적용)</strong></td>
+        <td id="expenseTotalAmount">-</td>
+        <td id="expenseTotalKrw">-</td>
+        <td colspan="3" id="expenseTotalNote" style="text-align:right;color:var(--text-secondary);font-size:12px;"></td>
+      </tr>
+    </tfoot>
   </table>
 </div>
 
@@ -2619,7 +2689,7 @@ const BUDGET_DATA = {
     { label: '파리 교통 (Navigo)', amount: 30, currency: 'EUR' }
   ],
   meal: [
-    { label: '외식 (~13끼 × €20)', amount: 260, currency: 'EUR' },
+    { label: '외식 (~13끼 × €40)', amount: 520, currency: 'EUR' },
     { label: '마트/자취 (~26끼)', amount: 130, currency: 'EUR' }
   ],
   activity: [
@@ -2629,6 +2699,7 @@ const BUDGET_DATA = {
     { label: '마르세유 (2박)', amount: 194480, currency: 'KRW' },
     { label: 'Le Relais (1박)', amount: 82, currency: 'EUR' },
     { label: '생자네 (2박)', amount: 178628, currency: 'KRW' },
+    { label: '니스 (2박)', amount: 450000, currency: 'KRW' },
     { label: '파리 (3박)', amount: 699821, currency: 'KRW' }
   ],
   flight: [
@@ -2688,6 +2759,8 @@ function cycleTheme() {
     localStorage.setItem(`${TRIP_CODE}_theme`, 'dark');
   }
   toggleMenu();
+  // [v3.16] 테마 변경 시 차트 색 재계산
+  if (typeof renderExpenseCharts === 'function') renderExpenseCharts();
 }
 
 // Load theme on init
@@ -3514,6 +3587,7 @@ function filterExpenseByCategory(cat) {
 
 function updateExpenseTable() {
   const tbody = document.getElementById('expenseTableBody');
+  const tfoot = document.getElementById('expenseTableFoot');
 
   let filtered = expenses;
   if (expenseFilterDay !== 'all') {
@@ -3525,6 +3599,7 @@ function updateExpenseTable() {
 
   if (filtered.length === 0) {
     tbody.innerHTML = '<tr id="expenseEmptyState"><td colspan="7" class="expense-empty-state">아직 기록된 경비가 없습니다.</td></tr>';
+    if (tfoot) tfoot.style.display = 'none';
     return;
   }
 
@@ -3547,6 +3622,24 @@ function updateExpenseTable() {
       + '<td><button class="btn btn-danger" onclick="event.stopPropagation();deleteExpense(' + realIdx + ')">삭제</button></td>'
       + '</tr>';
   }).join('');
+
+  // [v3.16] 합계 행 — 필터링 결과 기준 (필터 2개 동시면 교집합)
+  if (tfoot) {
+    var sumEUR = 0, sumKRW = 0;
+    filtered.forEach(function(exp) {
+      var rate = expenseRate(exp);
+      if (exp.currency === 'EUR') { sumEUR += exp.amount; sumKRW += exp.amount * rate; }
+      else { sumKRW += exp.amount; sumEUR += exp.amount / rate; }
+    });
+    var labelParts = [];
+    if (expenseFilterDay !== 'all') labelParts.push(expenseFilterDay === '0' ? '💳 사전결제' : ('DAY ' + expenseFilterDay));
+    if (expenseFilterCategory !== 'all') labelParts.push(getCategoryLabel(expenseFilterCategory));
+    var noteText = labelParts.length > 0 ? '필터: ' + labelParts.join(' + ') + ' · ' + filtered.length + '건' : '전체 ' + filtered.length + '건';
+    document.getElementById('expenseTotalAmount').textContent = '€' + sumEUR.toFixed(2);
+    document.getElementById('expenseTotalKrw').textContent = '₩' + Math.round(sumKRW).toLocaleString();
+    document.getElementById('expenseTotalNote').textContent = noteText;
+    tfoot.style.display = '';
+  }
 }
 
 function deleteExpense(idx) {
@@ -3615,6 +3708,114 @@ function fmtKrwShort(n) {
   if (n >= 1000000) return (n / 1000000).toFixed(2).replace(/\.?0+$/, '') + 'M';
   if (n >= 1000) return Math.round(n / 1000) + 'K';
   return Math.round(n).toLocaleString();
+}
+
+// ===== [v3.16] EXPENSE CHARTS (Chart.js) =====
+var _categoryChart = null;
+var _dayChart = null;
+
+// 카테고리 색상 팔레트 (KPI day color 톤과 일치)
+var CHART_COLORS = {
+  flight: '#3b82f6', hotel: '#ec4899', meal: '#f59e0b', cafe: '#a78bfa',
+  transport: '#06b6d4', activity: '#10b981', souvenir: '#fb923c', etc: '#6b7280'
+};
+
+function renderExpenseCharts() {
+  if (typeof Chart === 'undefined') return; // CDN 로드 실패 시 무시
+  // 다크/라이트 테마 텍스트 색
+  var isDark = document.documentElement.classList.contains('theme-dark');
+  var textColor = isDark ? '#EDEDED' : '#1a1a1a';
+  var gridColor = isDark ? 'rgba(255,255,255,0.06)' : '#e5e5e5';
+
+  // ── 카테고리 도넛 ──
+  var catTotals = {}; // KRW 환산 합계
+  expenses.forEach(function(e) {
+    var rate = expenseRate(e);
+    var krw = e.currency === 'EUR' ? e.amount * rate : e.amount;
+    catTotals[e.category] = (catTotals[e.category] || 0) + krw;
+  });
+  var catKeys = Object.keys(catTotals).filter(function(k) { return catTotals[k] > 0; });
+  var catEmpty = document.getElementById('expenseCategoryEmpty');
+  if (catKeys.length === 0) {
+    if (catEmpty) catEmpty.style.display = 'flex';
+    if (_categoryChart) { _categoryChart.destroy(); _categoryChart = null; }
+  } else {
+    if (catEmpty) catEmpty.style.display = 'none';
+    var labels = catKeys.map(function(k) { return getCategoryLabel(k); });
+    var data = catKeys.map(function(k) { return Math.round(catTotals[k]); });
+    var colors = catKeys.map(function(k) { return CHART_COLORS[k] || '#888'; });
+
+    if (_categoryChart) _categoryChart.destroy();
+    _categoryChart = new Chart(document.getElementById('expenseCategoryChart'), {
+      type: 'doughnut',
+      data: { labels: labels, datasets: [{ data: data, backgroundColor: colors, borderWidth: 1, borderColor: isDark ? '#0A0A0A' : '#fff' }] },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '60%',
+        plugins: {
+          legend: { position: 'bottom', labels: { color: textColor, font: { size: 11 }, padding: 8, boxWidth: 12 } },
+          tooltip: { callbacks: { label: function(ctx) {
+            var sum = ctx.dataset.data.reduce(function(a,b){return a+b;}, 0);
+            var pct = sum > 0 ? Math.round(ctx.parsed / sum * 100) : 0;
+            return ctx.label + ': ₩' + ctx.parsed.toLocaleString() + ' (' + pct + '%)';
+          } } }
+        }
+      }
+    });
+  }
+
+  // ── DAY별 막대 (사전결제 day=0 제외) ──
+  var dayLabels = DAYS.map(function(d) { return 'DAY ' + d.num; });
+  var dayBudgets = DAYS.map(function(d) {
+    // SCHEDULE_DATA의 cost 합산 (EUR 기준)
+    var b = 0;
+    SCHEDULE_DATA.filter(function(s) { return s.day === d.num; }).forEach(function(s) {
+      if (s.cost) {
+        var cur = s.currency || 'EUR';
+        b += cur === 'EUR' ? s.cost * EUR_TO_KRW : s.cost;
+      }
+    });
+    return Math.round(b);
+  });
+  var dayActuals = DAYS.map(function(d) {
+    var sum = 0;
+    expenses.filter(function(e) { return e.day === d.num; }).forEach(function(e) {
+      var rate = expenseRate(e);
+      sum += e.currency === 'EUR' ? e.amount * rate : e.amount;
+    });
+    return Math.round(sum);
+  });
+
+  var dayEmpty = document.getElementById('expenseDayEmpty');
+  var hasAny = dayBudgets.some(function(v) { return v > 0; }) || dayActuals.some(function(v) { return v > 0; });
+  if (!hasAny) {
+    if (dayEmpty) dayEmpty.style.display = 'flex';
+    if (_dayChart) { _dayChart.destroy(); _dayChart = null; }
+    return;
+  }
+  if (dayEmpty) dayEmpty.style.display = 'none';
+
+  if (_dayChart) _dayChart.destroy();
+  _dayChart = new Chart(document.getElementById('expenseDayChart'), {
+    type: 'bar',
+    data: {
+      labels: dayLabels,
+      datasets: [
+        { label: '예산', data: dayBudgets, backgroundColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.15)', borderRadius: 4 },
+        { label: '실사용', data: dayActuals, backgroundColor: '#3b82f6', borderRadius: 4 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top', labels: { color: textColor, font: { size: 11 }, boxWidth: 12 } },
+        tooltip: { callbacks: { label: function(ctx) { return ctx.dataset.label + ': ₩' + (ctx.parsed.y || 0).toLocaleString(); } } }
+      },
+      scales: {
+        x: { ticks: { color: textColor, font: { size: 10 } }, grid: { display: false } },
+        y: { ticks: { color: textColor, font: { size: 10 }, callback: function(v) { return '₩' + (v/1000).toFixed(0) + 'K'; } }, grid: { color: gridColor } }
+      }
+    }
+  });
 }
 
 function updateExpenseUI() {
@@ -3696,6 +3897,8 @@ function updateExpenseUI() {
   });
 
   updateExpenseTable();
+  // [v3.16] 차트 갱신
+  renderExpenseCharts();
 }
 
 // ===== INFO PANEL =====
