@@ -1,5 +1,8 @@
 <!DOCTYPE html>
 <!-- Version History (최신순) -->
+<!-- v3.16.2 (2026.05.03) : [기능] 구글지도 URL 자동 검색 폴백 — mapUrl 미입력 시 이름+지역+France로 구글지도 자동 검색 (일정/맛집/카페/관광스팟/숙소/근처추천 6개 영역)
+                            [헬퍼] getMapUrl(name, customUrl, region) — region은 REGION_EN 영문 매핑 사용, 없으면 France만 부착
+                            [헬퍼] dayToRegion(dayNum) — DAYS 일정상 region 자동 추출 (일정/근처추천 카드용) -->
 <!-- v3.16.1 (2026.05.03) : [버그수정] 푸터 표시 정보가 v3.9.1 · 2026.03.31 · 1,700 KRW로 고정되어 실제 버전과 불일치 — 현재 버전(v3.16)/날짜로 갱신 + 환율을 INFO 카드와 동일 동적 갱신 -->
 <!-- v3.16 (2026.05.03) : [기능] 사용경비 테이블에 합계 행 추가 — 필터링된 데이터 기준 EUR/KRW 합계 (필터 2개 동시 시 교집합 합산)
                           [기능] 카테고리별 지출 도넛 차트 + DAY별 지출 vs 예산 막대 차트 추가 (Chart.js, 사전결제 제외)
@@ -212,6 +215,44 @@ function prefetchRate(dateStr) {
       hint.textContent = '자동 환율: 1 EUR = ' + r.rate.toFixed(2) + ' KRW (' + r.date + ', ' + srcLabel + ')';
     }
   });
+}
+
+// ===== [v3.16.2] GOOGLE MAPS AUTO-SEARCH FALLBACK =====
+// region key → 영문/현지명 (구글지도 검색 정확도 ↑)
+var REGION_EN = {
+  marseille: 'Marseille',
+  provence: 'Provence',
+  cotedazur: "Côte d'Azur",
+  nice: 'Nice',
+  paris: 'Paris'
+};
+
+// [v3.16.2] DAY 번호 → region 자동 매핑 (일정/근처추천 카드처럼 region 정보 없을 때 사용)
+function dayToRegion(dayNum) {
+  if (dayNum === 3) return 'marseille';
+  if (dayNum === 4) return 'provence';
+  if (dayNum === 5 || dayNum === 6) return 'cotedazur';
+  if (dayNum === 7 || dayNum === 8) return 'nice';
+  if (dayNum >= 10 && dayNum <= 12) return 'paris';
+  return null; // DAY 1, 2, 9 (이동일) — 지역 모호하면 France만 부착
+}
+
+// [v3.16.2] 지도 URL — customUrl 있으면 그대로, 없으면 자동 검색 fallback
+//   name: 장소명 (필수)
+//   customUrl: 사용자가 등록한 구글지도 URL (있으면 우선)
+//   region: REGION_EN 키 (선택, 검색어 정확도 향상)
+function getMapUrl(name, customUrl, region) {
+  if (customUrl && customUrl.trim()) return customUrl;
+  if (!name) return 'https://www.google.com/maps';
+  var query = String(name).trim();
+  if (region && REGION_EN[region]) query += ' ' + REGION_EN[region];
+  query += ' France';
+  return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(query);
+}
+
+// [v3.16.2] 자동 검색 vs 등록 URL 구분 — UI 라벨/툴팁용
+function isAutoMapUrl(customUrl) {
+  return !customUrl || !String(customUrl).trim();
 }
 
 // [v3.14] 콤마(천단위) 입력 sanitize 헬퍼
@@ -1416,6 +1457,11 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     .map-link:hover { opacity: 0.7; text-decoration: none; }
     .map-svg { width: 14px; height: 14px; flex-shrink: 0; }
+    /* [v3.16.2] 자동 검색 폴백 — 등록된 URL과 시각적 구분 (살짝 흐리게) */
+    .map-link.map-link-auto { color: var(--text-secondary); opacity: 0.85; }
+    .map-link.map-link-auto:hover { opacity: 1; color: #3b82f6; }
+    .hotel-btn.map-link-auto { opacity: 0.85; }
+    .hotel-btn.map-link-auto:hover { opacity: 1; }
 
     /* ===== NEARBY BOX ===== */
     .nearby-box {
@@ -2858,10 +2904,11 @@ function renderSchedule() {
         }
       }
 
-      var mapHTML = '';
-      if (item.map) {
-        mapHTML = '<a class="map-link" href="' + item.map + '" target="_blank" rel="noopener">' + MAP_SVG + '지도</a>';
-      }
+      // [v3.16.2] 지도 URL — 등록된 item.map 우선, 없으면 자동 검색 폴백
+      var _itemRegion = dayToRegion(item.day);
+      var _itemMapUrl = getMapUrl(item.title, item.map, _itemRegion);
+      var _isAutoMap = isAutoMapUrl(item.map);
+      var mapHTML = '<a class="map-link' + (_isAutoMap ? ' map-link-auto' : '') + '" href="' + _itemMapUrl + '" target="_blank" rel="noopener" title="' + (_isAutoMap ? '자동 검색: ' + item.title : '구글지도 (등록된 URL)') + '">' + MAP_SVG + '지도' + (_isAutoMap ? '🔍' : '') + '</a>';
 
       var notesHTML = '';
       if (item.notes) {
@@ -2887,7 +2934,10 @@ function renderSchedule() {
         html += '<div class="nearby-list">';
         nearbyItems.forEach(function(n) {
           var nIcon = n.type === 'meal' ? '🍽️' : n.type === 'cafe' ? '☕' : '🏛️';
-          var nMap = n.map ? ' <a class="map-link" href="' + n.map + '" target="_blank" rel="noopener">' + MAP_SVG + '</a>' : '';
+          // [v3.16.2] n.map 없으면 부모 일정 day의 region으로 자동 검색
+          var _nMapUrl = getMapUrl(n.name, n.map, _itemRegion);
+          var _nIsAuto = isAutoMapUrl(n.map);
+          var nMap = ' <a class="map-link' + (_nIsAuto ? ' map-link-auto' : '') + '" href="' + _nMapUrl + '" target="_blank" rel="noopener" title="' + (_nIsAuto ? '자동 검색: ' + n.name : '구글지도') + '">' + MAP_SVG + '</a>';
           html += '<div>· <strong>' + n.name + '</strong>(' + n.walk + ') — ' + n.desc + nMap + '</div>';
         });
         html += '</div></div>';
@@ -2994,9 +3044,10 @@ function renderFoodPanel() {
     `;
 
     regularItems.forEach(item => {
-      var mapLink = item.mapUrl
-        ? '<a class="map-link" href="' + item.mapUrl + '" target="_blank" rel="noopener">' + MAP_SVG + '구글지도</a>'
-        : '';
+      // [v3.16.2] 자동 검색 폴백 — mapUrl 없으면 이름+region+France로 구글지도 검색
+      var _mapUrlF = getMapUrl(item.name, item.mapUrl, item.region);
+      var _mapAuto = isAutoMapUrl(item.mapUrl);
+      var mapLink = '<a class="map-link' + (_mapAuto ? ' map-link-auto' : '') + '" href="' + _mapUrlF + '" target="_blank" rel="noopener" title="' + (_mapAuto ? '자동 검색: ' + item.name : '구글지도') + '">' + MAP_SVG + '구글지도' + (_mapAuto ? '🔍' : '') + '</a>';
       var scheduleTag = item.inSchedule
         ? '<div class="in-schedule">📌 ' + item.inSchedule + ' 일정 포함</div>'
         : '';
@@ -3109,9 +3160,10 @@ function renderCafePanel() {
     `;
 
     items.forEach(item => {
-      var mapLink = item.mapUrl
-        ? '<a class="map-link" href="' + item.mapUrl + '" target="_blank" rel="noopener">' + MAP_SVG + '구글지도</a>'
-        : '';
+      // [v3.16.2] 자동 검색 폴백 — mapUrl 없으면 이름+region+France로 구글지도 검색
+      var _mapUrlF = getMapUrl(item.name, item.mapUrl, item.region);
+      var _mapAuto = isAutoMapUrl(item.mapUrl);
+      var mapLink = '<a class="map-link' + (_mapAuto ? ' map-link-auto' : '') + '" href="' + _mapUrlF + '" target="_blank" rel="noopener" title="' + (_mapAuto ? '자동 검색: ' + item.name : '구글지도') + '">' + MAP_SVG + '구글지도' + (_mapAuto ? '🔍' : '') + '</a>';
       var scheduleTag = item.inSchedule
         ? '<div class="in-schedule">📌 ' + item.inSchedule + ' 일정 포함</div>'
         : '';
@@ -3196,9 +3248,10 @@ function renderSpotPanel() {
     `;
 
     items.forEach(item => {
-      var mapLink = item.mapUrl
-        ? '<a class="map-link" href="' + item.mapUrl + '" target="_blank" rel="noopener">' + MAP_SVG + '구글지도</a>'
-        : '';
+      // [v3.16.2] 자동 검색 폴백 — mapUrl 없으면 이름+region+France로 구글지도 검색
+      var _mapUrlF = getMapUrl(item.name, item.mapUrl, item.region);
+      var _mapAuto = isAutoMapUrl(item.mapUrl);
+      var mapLink = '<a class="map-link' + (_mapAuto ? ' map-link-auto' : '') + '" href="' + _mapUrlF + '" target="_blank" rel="noopener" title="' + (_mapAuto ? '자동 검색: ' + item.name : '구글지도') + '">' + MAP_SVG + '구글지도' + (_mapAuto ? '🔍' : '') + '</a>';
       var scheduleTag = item.inSchedule
         ? '<div class="in-schedule">📌 ' + item.inSchedule + ' 포함</div>'
         : '';
@@ -3353,9 +3406,10 @@ function renderHotelPanel() {
     // Buttons (Taichung style with SVG icons)
     h += '<div class="hotel-footer">';
     h += '<a class="hotel-btn hotel-btn-booking" href="' + (hotel.bookingUrl || '#') + '" target="_blank" rel="noopener">' + BOOKING_SVG + ' ' + (hotel.bookingSite || '') + ' 예약 확인</a>';
-    if (hotel.mapUrl) {
-      h += '<a class="hotel-btn hotel-btn-map" href="' + hotel.mapUrl + '" target="_blank" rel="noopener">' + MAP_SVG + ' 구글지도</a>';
-    }
+    // [v3.16.2] 숙소 지도 — mapUrl 없으면 자동 검색 폴백
+    var _hotelMapUrl = getMapUrl(hotel.name, hotel.mapUrl, hotel.region);
+    var _hotelAuto = isAutoMapUrl(hotel.mapUrl);
+    h += '<a class="hotel-btn hotel-btn-map' + (_hotelAuto ? ' map-link-auto' : '') + '" href="' + _hotelMapUrl + '" target="_blank" rel="noopener" title="' + (_hotelAuto ? '자동 검색: ' + hotel.name : '구글지도') + '">' + MAP_SVG + ' 구글지도' + (_hotelAuto ? '🔍' : '') + '</a>';
     h += '</div>';
 
     card.innerHTML = h;
