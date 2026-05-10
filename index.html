@@ -1,5 +1,7 @@
 <!DOCTYPE html>
 <!-- Version History (최신순) -->
+<!-- v3.16.3 (2026.05.10) : [기능] dayToRegion 정교화 — 이동일(DAY 1·2·9)도 도착지/체류지 기준으로 명시 매핑 (DAY_REGION_MAP)
+                            [기능] 일정 카드 '예상 경비' 위에 해당 일자 숙소 정보 표시 — 체크아웃 당일은 제외 (day.date >= checkIn && day.date < checkOut) -->
 <!-- v3.16.2 (2026.05.03) : [기능] 구글지도 URL 자동 검색 폴백 — mapUrl 미입력 시 이름+지역+France로 구글지도 자동 검색 (일정/맛집/카페/관광스팟/숙소/근처추천 6개 영역)
                             [헬퍼] getMapUrl(name, customUrl, region) — region은 REGION_EN 영문 매핑 사용, 없으면 France만 부착
                             [헬퍼] dayToRegion(dayNum) — DAYS 일정상 region 자동 추출 (일정/근처추천 카드용) -->
@@ -227,14 +229,41 @@ var REGION_EN = {
   paris: 'Paris'
 };
 
+// [v3.16.3] DAY → region 명시 맵 — 이동일도 도착지/체류지 기준으로 매핑
+//   DAY 1: 인천 출발 → 최종 목적지 마르세유 기준
+//   DAY 2: 헬싱키 → CDG → 마르세유 (최종 도착지)
+//   DAY 9: 니스 → 파리 (도착지)
+//   DAY 12: 파리 CDG → 귀국 (출발지 파리)
+var DAY_REGION_MAP = {
+  1: 'marseille', 2: 'marseille', 3: 'marseille',
+  4: 'provence',
+  5: 'cotedazur', 6: 'cotedazur',
+  7: 'nice', 8: 'nice',
+  9: 'paris', 10: 'paris', 11: 'paris', 12: 'paris'
+};
+
 // [v3.16.2] DAY 번호 → region 자동 매핑 (일정/근처추천 카드처럼 region 정보 없을 때 사용)
 function dayToRegion(dayNum) {
-  if (dayNum === 3) return 'marseille';
-  if (dayNum === 4) return 'provence';
-  if (dayNum === 5 || dayNum === 6) return 'cotedazur';
-  if (dayNum === 7 || dayNum === 8) return 'nice';
-  if (dayNum >= 10 && dayNum <= 12) return 'paris';
-  return null; // DAY 1, 2, 9 (이동일) — 지역 모호하면 France만 부착
+  return DAY_REGION_MAP[dayNum] || null;
+}
+
+// [v3.16.3] 해당 일자(YYYY-MM-DD)에 머무는 숙소 목록 — 체크아웃 당일은 제외
+//   조건: hotel.checkIn <= dateStr < hotel.checkOut
+//   반환: [{ hotel, nightIdx (0부터, 첫째 박이면 0) }]
+function getStayingHotelsForDay(dateStr) {
+  if (!dateStr || typeof HOTEL_DATA === 'undefined') return [];
+  var result = [];
+  HOTEL_DATA.forEach(function(h) {
+    if (!h.checkIn || !h.checkOut) return;
+    if (dateStr >= h.checkIn && dateStr < h.checkOut) {
+      // 몇 박째인지 계산 (밀리초 차이 / 86400000)
+      var d1 = new Date(h.checkIn + 'T00:00:00');
+      var d2 = new Date(dateStr + 'T00:00:00');
+      var nightIdx = Math.round((d2 - d1) / 86400000); // 0부터
+      result.push({ hotel: h, nightIdx: nightIdx });
+    }
+  });
+  return result;
 }
 
 // [v3.16.2] 지도 URL — customUrl 있으면 그대로, 없으면 자동 검색 fallback
@@ -1394,6 +1423,36 @@ document.addEventListener('DOMContentLoaded', function() {
     .day-expense-card .expense-value { font-weight: 700; color: var(--text); }
     .expense-progress { flex: 1; min-width: 80px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
     .expense-progress-bar { height: 100%; background: var(--positive); border-radius: 3px; width: 0; transition: width 0.4s ease; }
+
+    /* ===== [v3.16.3] 일정 카드 숙소 정보 ===== */
+    .day-hotel-info {
+      display: flex; align-items: center; gap: 14px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-left: 3px solid var(--tag-hotel-text, #ec4899);
+      border-radius: 10px; padding: 12px 16px; margin-bottom: 12px;
+    }
+    .day-hotel-icon { font-size: 22px; flex-shrink: 0; }
+    .day-hotel-meta { flex: 1; min-width: 0; }
+    .day-hotel-name { font-size: 14px; font-weight: 600; color: var(--text); line-height: 1.3; }
+    .day-hotel-name .day-hotel-sub { font-weight: 400; color: var(--text-secondary); font-size: 13px; }
+    .day-hotel-extra { display: flex; gap: 10px; margin-top: 4px; flex-wrap: wrap; }
+    .day-hotel-type, .day-hotel-night {
+      font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px;
+      background: var(--surface-hover); color: var(--text-secondary);
+    }
+    .day-hotel-night { background: rgba(236,72,153,0.1); color: var(--tag-hotel-text, #ec4899); }
+    .day-hotel-map {
+      flex-shrink: 0; font-size: 12px; color: #3b82f6; text-decoration: none;
+      font-weight: 500; padding: 6px 10px; border-radius: 8px; background: var(--surface-hover);
+      transition: background 0.15s;
+    }
+    .day-hotel-map:hover { background: var(--border); }
+    .day-hotel-map.map-link-auto { color: var(--text-secondary); }
+    .day-hotel-map.map-link-auto:hover { color: #3b82f6; }
+    @media (max-width: 600px) {
+      .day-hotel-info { padding: 10px 12px; gap: 10px; }
+      .day-hotel-name { font-size: 13px; }
+    }
     /* ===== TIMELINE (Taichung style) ===== */
     .timeline { position: relative; padding-left: 32px; }
     .timeline::before { content: ''; position: absolute; left: 11px; top: 8px; bottom: 8px; width: 2px; background: var(--border); border-radius: 1px; }
@@ -2879,6 +2938,27 @@ function renderSchedule() {
     var html = '';
     // Day header
     html += '<div class="day-header"><div class="day-number" style="background:var(--day' + day.num + ');">' + day.num + '</div><div class="day-meta"><h2>' + day.title + '</h2><p>' + day.date + ' (' + day.dow + ') · ' + day.desc + '</p></div></div>';
+
+    // [v3.16.3] 해당 일자 숙소 정보 — 체크아웃 당일은 제외
+    var stays = getStayingHotelsForDay(day.date);
+    if (stays.length > 0) {
+      stays.forEach(function(s) {
+        var h = s.hotel;
+        var typeLabel = (h.typeEmoji || '🏨') + ' ' + (h.type || '');
+        var nightLabel = (s.nightIdx + 1) + '박째 / 총 ' + (h.nights || '?') + '박';
+        // 지도 링크 (자동 폴백 헬퍼 사용)
+        var hMapUrl = getMapUrl(h.name, h.mapUrl, h.region);
+        var hAuto = isAutoMapUrl(h.mapUrl);
+        html += '<div class="day-hotel-info">';
+        html += '<span class="day-hotel-icon">🏨</span>';
+        html += '<div class="day-hotel-meta">';
+        html += '<div class="day-hotel-name">' + h.name + (h.subName ? ' <span class="day-hotel-sub">· ' + h.subName + '</span>' : '') + '</div>';
+        html += '<div class="day-hotel-extra"><span class="day-hotel-type">' + typeLabel + '</span><span class="day-hotel-night">' + nightLabel + '</span></div>';
+        html += '</div>';
+        html += '<a class="day-hotel-map' + (hAuto ? ' map-link-auto' : '') + '" href="' + hMapUrl + '" target="_blank" rel="noopener" title="' + (hAuto ? '자동 검색: ' + h.name : '구글지도') + '">📍 지도' + (hAuto ? '🔍' : '') + '</a>';
+        html += '</div>';
+      });
+    }
 
     // Day expense card
     html += '<div class="day-expense-card" id="dayExpenseCard' + day.num + '">';
