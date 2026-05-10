@@ -1,5 +1,8 @@
 <!DOCTYPE html>
 <!-- Version History (최신순) -->
+<!-- v3.16.4 (2026.05.10) : [기능] 일정 카드 숙소 표시에 1박 가격(KRW 환산) 추가 — 예: ₩97,240/박
+                            [기능] 일정 카드 숙소 영역 클릭 시 숙소 상세 카드 팝업 모달 — 숙소 탭의 hotel-card를 그대로 모달에 표시
+                            [리팩토링] hotel-card HTML 빌드를 buildHotelCardHtml() 함수로 추출 — renderHotelPanel과 모달 양쪽에서 재사용 -->
 <!-- v3.16.3 (2026.05.10) : [기능] dayToRegion 정교화 — 이동일(DAY 1·2·9)도 도착지/체류지 기준으로 명시 매핑 (DAY_REGION_MAP)
                             [기능] 일정 카드 '예상 경비' 위에 해당 일자 숙소 정보 표시 — 체크아웃 당일은 제외 (day.date >= checkIn && day.date < checkOut) -->
 <!-- v3.16.2 (2026.05.03) : [기능] 구글지도 URL 자동 검색 폴백 — mapUrl 미입력 시 이름+지역+France로 구글지도 자동 검색 (일정/맛집/카페/관광스팟/숙소/근처추천 6개 영역)
@@ -1425,22 +1428,28 @@ document.addEventListener('DOMContentLoaded', function() {
     .expense-progress-bar { height: 100%; background: var(--positive); border-radius: 3px; width: 0; transition: width 0.4s ease; }
 
     /* ===== [v3.16.3] 일정 카드 숙소 정보 ===== */
+    /* [v3.16.4] 클릭 가능 + 가격 배지 추가 */
     .day-hotel-info {
       display: flex; align-items: center; gap: 14px;
       background: var(--surface); border: 1px solid var(--border);
       border-left: 3px solid var(--tag-hotel-text, #ec4899);
       border-radius: 10px; padding: 12px 16px; margin-bottom: 12px;
+      cursor: pointer; transition: background 0.15s, border-color 0.15s;
     }
+    .day-hotel-info:hover { background: var(--surface-hover); border-color: var(--tag-hotel-text, #ec4899); }
     .day-hotel-icon { font-size: 22px; flex-shrink: 0; }
     .day-hotel-meta { flex: 1; min-width: 0; }
     .day-hotel-name { font-size: 14px; font-weight: 600; color: var(--text); line-height: 1.3; }
     .day-hotel-name .day-hotel-sub { font-weight: 400; color: var(--text-secondary); font-size: 13px; }
     .day-hotel-extra { display: flex; gap: 10px; margin-top: 4px; flex-wrap: wrap; }
-    .day-hotel-type, .day-hotel-night {
+    .day-hotel-type, .day-hotel-night, .day-hotel-price {
       font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px;
       background: var(--surface-hover); color: var(--text-secondary);
     }
     .day-hotel-night { background: rgba(236,72,153,0.1); color: var(--tag-hotel-text, #ec4899); }
+    /* [v3.16.4] 1박 가격 배지 — 그린 톤 (positive) */
+    .day-hotel-price { background: rgba(16,185,129,0.12); color: var(--positive); }
+    .day-hotel-price-empty { background: rgba(107,114,128,0.1); color: var(--text-secondary); font-style: italic; }
     .day-hotel-map {
       flex-shrink: 0; font-size: 12px; color: #3b82f6; text-decoration: none;
       font-weight: 500; padding: 6px 10px; border-radius: 8px; background: var(--surface-hover);
@@ -1453,6 +1462,16 @@ document.addEventListener('DOMContentLoaded', function() {
       .day-hotel-info { padding: 10px 12px; gap: 10px; }
       .day-hotel-name { font-size: 13px; }
     }
+
+    /* ===== [v3.16.4] 모달 wide (숙소 카드용) + hotel-night-chip active ===== */
+    .modal-overlay > .modal.modal-wide { max-width: 720px; }
+    .hotel-night-chip.active {
+      background: rgba(236,72,153,0.15);
+      border-color: var(--tag-hotel-text, #ec4899);
+    }
+    .hotel-night-chip.active .night-label { color: var(--tag-hotel-text, #ec4899); }
+    /* 모달 내부의 hotel-card는 carousel과 다르게 100% 너비 */
+    .hotel-card-modal { width: 100%; max-width: 100%; }
     /* ===== TIMELINE (Taichung style) ===== */
     .timeline { position: relative; padding-left: 32px; }
     .timeline::before { content: ''; position: absolute; left: 11px; top: 8px; bottom: 8px; width: 2px; background: var(--border); border-radius: 1px; }
@@ -2940,22 +2959,32 @@ function renderSchedule() {
     html += '<div class="day-header"><div class="day-number" style="background:var(--day' + day.num + ');">' + day.num + '</div><div class="day-meta"><h2>' + day.title + '</h2><p>' + day.date + ' (' + day.dow + ') · ' + day.desc + '</p></div></div>';
 
     // [v3.16.3] 해당 일자 숙소 정보 — 체크아웃 당일은 제외
+    // [v3.16.4] 1박 가격 표시 + 클릭 시 상세 모달
     var stays = getStayingHotelsForDay(day.date);
     if (stays.length > 0) {
       stays.forEach(function(s) {
         var h = s.hotel;
         var typeLabel = (h.typeEmoji || '🏨') + ' ' + (h.type || '');
         var nightLabel = (s.nightIdx + 1) + '박째 / 총 ' + (h.nights || '?') + '박';
+        // [v3.16.4] 1박 가격 (KRW)
+        var perNight = getHotelPerNightKRW(h);
+        var priceLabel = perNight > 0 ? '₩' + perNight.toLocaleString() + '/박' : '가격 미정';
         // 지도 링크 (자동 폴백 헬퍼 사용)
         var hMapUrl = getMapUrl(h.name, h.mapUrl, h.region);
         var hAuto = isAutoMapUrl(h.mapUrl);
-        html += '<div class="day-hotel-info">';
+        // 이름을 onclick에 안전하게 전달 위한 escape
+        var hNameEsc = h.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        html += '<div class="day-hotel-info" onclick="openHotelDetailModal(\'' + hNameEsc + '\', \'' + day.date + '\')" title="클릭 시 숙소 상세 보기">';
         html += '<span class="day-hotel-icon">🏨</span>';
         html += '<div class="day-hotel-meta">';
         html += '<div class="day-hotel-name">' + h.name + (h.subName ? ' <span class="day-hotel-sub">· ' + h.subName + '</span>' : '') + '</div>';
-        html += '<div class="day-hotel-extra"><span class="day-hotel-type">' + typeLabel + '</span><span class="day-hotel-night">' + nightLabel + '</span></div>';
+        html += '<div class="day-hotel-extra">';
+        html += '<span class="day-hotel-type">' + typeLabel + '</span>';
+        html += '<span class="day-hotel-night">' + nightLabel + '</span>';
+        html += '<span class="day-hotel-price' + (perNight === 0 ? ' day-hotel-price-empty' : '') + '">' + priceLabel + '</span>';
         html += '</div>';
-        html += '<a class="day-hotel-map' + (hAuto ? ' map-link-auto' : '') + '" href="' + hMapUrl + '" target="_blank" rel="noopener" title="' + (hAuto ? '자동 검색: ' + h.name : '구글지도') + '">📍 지도' + (hAuto ? '🔍' : '') + '</a>';
+        html += '</div>';
+        html += '<a class="day-hotel-map' + (hAuto ? ' map-link-auto' : '') + '" href="' + hMapUrl + '" target="_blank" rel="noopener" title="' + (hAuto ? '자동 검색: ' + h.name : '구글지도') + '" onclick="event.stopPropagation()">📍 지도' + (hAuto ? '🔍' : '') + '</a>';
         html += '</div>';
       });
     }
@@ -3391,19 +3420,12 @@ function getBadgeLabel(badgeClass) {
   return labels[badgeClass] || '추천';
 }
 
-// ===== HOTEL CAROUSEL =====
-function renderHotelPanel() {
-  // 체크인 날짜 기준 오름차순 정렬 (v3.13~)
-  HOTEL_DATA.sort(function(a, b) { return new Date(a.checkIn) - new Date(b.checkIn); });
-
+// ===== HOTEL CARD HTML BUILDER =====
+// [v3.16.4] hotel-card 내부 HTML을 빌드하는 헬퍼 — renderHotelPanel과 모달에서 재사용
+//   highlightDate: 'YYYY-MM-DD' (해당 박째에 active 표시 — 일정 카드에서 모달 열 때 사용)
+function buildHotelCardHtml(hotel, highlightDate) {
   var BOOKING_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8h1a4 4 0 010 8h-1"/><path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>';
   var MAP_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>';
-
-  var track = document.getElementById('hotelTrack');
-  var dotsContainer = document.getElementById('hotelDots');
-  track.innerHTML = '';
-  dotsContainer.innerHTML = '';
-
   var DOW_MAP = {'0':'일','1':'월','2':'화','3':'수','4':'목','5':'금','6':'토'};
   function fmtDate(dateStr) {
     var d = new Date(dateStr);
@@ -3414,85 +3436,108 @@ function renderHotelPanel() {
     return (d.getMonth()+1) + '/' + d.getDate() + ' (' + DOW_MAP[d.getDay()] + ')';
   }
 
+  // Price calculations
+  var totalPriceKRW, totalDisplay, perNightDisplay, perNightKRW;
+  if (hotel.priceEUR) {
+    totalPriceKRW = Math.round(hotel.priceEUR * EUR_TO_KRW);
+    totalDisplay = hotel.priceEUR.toLocaleString() + ' EUR';
+    var pn = hotel.priceEUR / hotel.nights;
+    perNightDisplay = pn.toFixed(0) + ' EUR';
+    perNightKRW = Math.round(pn * EUR_TO_KRW);
+  } else {
+    totalPriceKRW = hotel.priceKRW || 0;
+    totalDisplay = '₩' + (hotel.priceKRW || 0).toLocaleString();
+    var pnk = hotel.nights > 0 ? Math.round((hotel.priceKRW || 0) / hotel.nights) : 0;
+    perNightDisplay = '₩' + pnk.toLocaleString();
+    perNightKRW = pnk;
+  }
+
+  // Generate nights bar chips
+  var nightsHTML = '';
+  var ciDate = new Date(hotel.checkIn);
+  for (var n = 0; n < hotel.nights; n++) {
+    var nd = new Date(ciDate);
+    nd.setDate(nd.getDate() + n);
+    var ndStr = nd.toISOString().slice(0,10);
+    var isActive = highlightDate && ndStr === highlightDate;
+    nightsHTML += '<div class="hotel-night-chip' + (isActive ? ' active' : '') + '"><div class="night-date">' + shortDate(ndStr) + '</div><div class="night-label">' + (n+1) + '박째</div></div>';
+  }
+
+  var h = '';
+  h += '<div class="hotel-card-header"><div>';
+  h += '<div class="hotel-name">' + hotel.name + '</div>';
+  h += '<div class="hotel-sub-name">' + (hotel.subName || '') + '</div>';
+  h += '</div>';
+  h += '<span class="hotel-type-badge">' + (hotel.typeEmoji || '🏨') + ' ' + hotel.type + '</span>';
+  h += '</div>';
+
+  h += '<div class="hotel-nights-bar">' + nightsHTML + '</div>';
+
+  h += '<div class="hotel-info-grid">';
+  h += '<div class="hotel-info-item"><span class="hotel-info-label">체크인</span><span class="hotel-info-value">' + fmtDate(hotel.checkIn) + '</span></div>';
+  h += '<div class="hotel-info-item"><span class="hotel-info-label">체크아웃</span><span class="hotel-info-value">' + fmtDate(hotel.checkOut) + '</span></div>';
+  h += '<div class="hotel-info-item"><span class="hotel-info-label">숙박일수</span><span class="hotel-info-value">' + hotel.nights + '박</span></div>';
+  h += '<div class="hotel-info-item"><span class="hotel-info-label">지역</span><span class="hotel-info-value">' + (REGIONS[hotel.region] ? REGIONS[hotel.region].name : '-') + '</span></div>';
+  h += '<div class="hotel-info-item"><span class="hotel-info-label">숙소 유형</span><span class="hotel-info-value">' + hotel.type + '</span></div>';
+  h += '<div class="hotel-info-item"><span class="hotel-info-label">예약 사이트</span><span class="hotel-info-value">' + (hotel.bookingSite || '-') + '</span></div>';
+  if (hotel.cancelDeadline) {
+    h += '<div class="hotel-info-item"><span class="hotel-info-label">취소 가능 기한</span><span class="hotel-info-value"><span class="hotel-info-badge cancel">⏰ ' + fmtDate(hotel.cancelDeadline) + '</span></span></div>';
+  }
+  if (hotel.paymentDue) {
+    h += '<div class="hotel-info-item"><span class="hotel-info-label">결제 예정일</span><span class="hotel-info-value"><span class="hotel-info-badge payment">💳 ' + fmtDate(hotel.paymentDue) + '</span></span></div>';
+  }
+  h += '</div>';
+
+  h += '<div class="hotel-price-row">';
+  h += '<div class="hotel-price-item"><div class="hotel-price-label">' + hotel.nights + '박 총 가격</div>';
+  h += '<div class="hotel-price-value">' + totalDisplay + '</div>';
+  if (hotel.priceEUR) h += '<div class="hotel-price-krw">≈ ₩' + totalPriceKRW.toLocaleString() + '</div>';
+  h += '</div>';
+  h += '<div class="hotel-price-item"><div class="hotel-price-label">1박 가격</div>';
+  h += '<div class="hotel-price-value">' + perNightDisplay + '</div>';
+  h += '<div class="hotel-price-krw">≈ ₩' + perNightKRW.toLocaleString() + '</div>';
+  h += '</div></div>';
+
+  h += '<div class="hotel-footer">';
+  h += '<a class="hotel-btn hotel-btn-booking" href="' + (hotel.bookingUrl || '#') + '" target="_blank" rel="noopener">' + BOOKING_SVG + ' ' + (hotel.bookingSite || '') + ' 예약 확인</a>';
+  var _hotelMapUrl = getMapUrl(hotel.name, hotel.mapUrl, hotel.region);
+  var _hotelAuto = isAutoMapUrl(hotel.mapUrl);
+  h += '<a class="hotel-btn hotel-btn-map' + (_hotelAuto ? ' map-link-auto' : '') + '" href="' + _hotelMapUrl + '" target="_blank" rel="noopener" title="' + (_hotelAuto ? '자동 검색: ' + hotel.name : '구글지도') + '">' + MAP_SVG + ' 구글지도' + (_hotelAuto ? '🔍' : '') + '</a>';
+  h += '</div>';
+  return h;
+}
+
+// [v3.16.4] 박당 KRW 가격 계산 헬퍼 (일정 카드용)
+function getHotelPerNightKRW(hotel) {
+  if (!hotel || !hotel.nights || hotel.nights <= 0) return 0;
+  if (hotel.priceEUR) return Math.round((hotel.priceEUR / hotel.nights) * EUR_TO_KRW);
+  if (hotel.priceKRW) return Math.round(hotel.priceKRW / hotel.nights);
+  return 0;
+}
+
+// [v3.16.4] 일정 카드 숙소 영역 클릭 → 숙소 상세 모달
+function openHotelDetailModal(hotelName, highlightDate) {
+  var hotel = HOTEL_DATA.find(function(h) { return h.name === hotelName; });
+  if (!hotel) return;
+  var body = document.getElementById('hotelDetailBody');
+  if (body) body.innerHTML = '<div class="hotel-card hotel-card-modal">' + buildHotelCardHtml(hotel, highlightDate) + '</div>';
+  openModal('hotelDetail');
+}
+
+// ===== HOTEL CAROUSEL =====
+function renderHotelPanel() {
+  // 체크인 날짜 기준 오름차순 정렬 (v3.13~)
+  HOTEL_DATA.sort(function(a, b) { return new Date(a.checkIn) - new Date(b.checkIn); });
+
+  var track = document.getElementById('hotelTrack');
+  var dotsContainer = document.getElementById('hotelDots');
+  track.innerHTML = '';
+  dotsContainer.innerHTML = '';
+
   HOTEL_DATA.forEach(function(hotel, idx) {
     var card = document.createElement('div');
     card.className = 'hotel-card';
-
-    // Price calculations
-    var totalPriceKRW, totalDisplay, perNightDisplay, perNightKRW;
-    if (hotel.priceEUR) {
-      totalPriceKRW = Math.round(hotel.priceEUR * EUR_TO_KRW);
-      totalDisplay = hotel.priceEUR.toLocaleString() + ' EUR';
-      var pn = hotel.priceEUR / hotel.nights;
-      perNightDisplay = pn.toFixed(0) + ' EUR';
-      perNightKRW = Math.round(pn * EUR_TO_KRW);
-    } else {
-      totalPriceKRW = hotel.priceKRW;
-      totalDisplay = '₩' + hotel.priceKRW.toLocaleString();
-      var pnk = Math.round(hotel.priceKRW / hotel.nights);
-      perNightDisplay = '₩' + pnk.toLocaleString();
-      perNightKRW = pnk;
-    }
-
-    // Generate nights bar chips
-    var nightsHTML = '';
-    var ciDate = new Date(hotel.checkIn);
-    for (var n = 0; n < hotel.nights; n++) {
-      var nd = new Date(ciDate);
-      nd.setDate(nd.getDate() + n);
-      nightsHTML += '<div class="hotel-night-chip"><div class="night-date">' + shortDate(nd.toISOString().slice(0,10)) + '</div><div class="night-label">' + (n+1) + '박째</div></div>';
-    }
-
-    var h = '';
-    // Header
-    h += '<div class="hotel-card-header"><div>';
-    h += '<div class="hotel-name">' + hotel.name + '</div>';
-    h += '<div class="hotel-sub-name">' + (hotel.subName || '') + '</div>';
-    h += '</div>';
-    h += '<span class="hotel-type-badge">' + (hotel.typeEmoji || '🏨') + ' ' + hotel.type + '</span>';
-    h += '</div>';
-
-    // Nights bar
-    h += '<div class="hotel-nights-bar">' + nightsHTML + '</div>';
-
-    // Info grid (6 items like Taichung)
-    h += '<div class="hotel-info-grid">';
-    h += '<div class="hotel-info-item"><span class="hotel-info-label">체크인</span><span class="hotel-info-value">' + fmtDate(hotel.checkIn) + '</span></div>';
-    h += '<div class="hotel-info-item"><span class="hotel-info-label">체크아웃</span><span class="hotel-info-value">' + fmtDate(hotel.checkOut) + '</span></div>';
-    h += '<div class="hotel-info-item"><span class="hotel-info-label">숙박일수</span><span class="hotel-info-value">' + hotel.nights + '박</span></div>';
-    h += '<div class="hotel-info-item"><span class="hotel-info-label">지역</span><span class="hotel-info-value">' + REGIONS[hotel.region].name + '</span></div>';
-    h += '<div class="hotel-info-item"><span class="hotel-info-label">숙소 유형</span><span class="hotel-info-value">' + hotel.type + '</span></div>';
-    h += '<div class="hotel-info-item"><span class="hotel-info-label">예약 사이트</span><span class="hotel-info-value">' + (hotel.bookingSite || '-') + '</span></div>';
-    // 취소 기한 & 결제 예정일
-    if (hotel.cancelDeadline) {
-      h += '<div class="hotel-info-item"><span class="hotel-info-label">취소 가능 기한</span><span class="hotel-info-value"><span class="hotel-info-badge cancel">⏰ ' + fmtDate(hotel.cancelDeadline) + '</span></span></div>';
-    }
-    if (hotel.paymentDue) {
-      h += '<div class="hotel-info-item"><span class="hotel-info-label">결제 예정일</span><span class="hotel-info-value"><span class="hotel-info-badge payment">💳 ' + fmtDate(hotel.paymentDue) + '</span></span></div>';
-    }
-    h += '</div>';
-
-    // Price row
-    h += '<div class="hotel-price-row">';
-    h += '<div class="hotel-price-item"><div class="hotel-price-label">' + hotel.nights + '박 총 가격</div>';
-    h += '<div class="hotel-price-value">' + totalDisplay + '</div>';
-    if (hotel.priceEUR) h += '<div class="hotel-price-krw">≈ ₩' + totalPriceKRW.toLocaleString() + '</div>';
-    h += '</div>';
-    h += '<div class="hotel-price-item"><div class="hotel-price-label">1박 가격</div>';
-    h += '<div class="hotel-price-value">' + perNightDisplay + '</div>';
-    h += '<div class="hotel-price-krw">≈ ₩' + perNightKRW.toLocaleString() + '</div>';
-    h += '</div></div>';
-
-    // Buttons (Taichung style with SVG icons)
-    h += '<div class="hotel-footer">';
-    h += '<a class="hotel-btn hotel-btn-booking" href="' + (hotel.bookingUrl || '#') + '" target="_blank" rel="noopener">' + BOOKING_SVG + ' ' + (hotel.bookingSite || '') + ' 예약 확인</a>';
-    // [v3.16.2] 숙소 지도 — mapUrl 없으면 자동 검색 폴백
-    var _hotelMapUrl = getMapUrl(hotel.name, hotel.mapUrl, hotel.region);
-    var _hotelAuto = isAutoMapUrl(hotel.mapUrl);
-    h += '<a class="hotel-btn hotel-btn-map' + (_hotelAuto ? ' map-link-auto' : '') + '" href="' + _hotelMapUrl + '" target="_blank" rel="noopener" title="' + (_hotelAuto ? '자동 검색: ' + hotel.name : '구글지도') + '">' + MAP_SVG + ' 구글지도' + (_hotelAuto ? '🔍' : '') + '</a>';
-    h += '</div>';
-
-    card.innerHTML = h;
+    card.innerHTML = buildHotelCardHtml(hotel);
     track.appendChild(card);
 
     var dot = document.createElement('div');
@@ -4893,6 +4938,15 @@ document.addEventListener('DOMContentLoaded', function() {
       <button class="form-btn btn-secondary" id="expenseDetailEdit">✏️ 수정</button>
       <button class="form-btn btn-danger-soft" id="expenseDetailDelete">🗑 삭제</button>
     </div>
+  </div>
+</div>
+
+<!-- [v3.16.4] 숙소 상세 카드 팝업 모달 — 일정 카드 숙소 클릭 시 -->
+<div class="modal-overlay" id="modal-hotelDetail" onclick="if(event.target===this)closeModal('hotelDetail')">
+  <div class="modal modal-wide">
+    <button class="modal-close" onclick="closeModal('hotelDetail')">&times;</button>
+    <h2>🏨 숙소 상세</h2>
+    <div id="hotelDetailBody"></div>
   </div>
 </div>
 
