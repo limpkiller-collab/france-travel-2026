@@ -96,8 +96,16 @@
 
 <script>
 // ===== MODAL MANAGEMENT =====
+var _modalScrollY = 0;
 function openModal(name) {
   document.getElementById('modal-' + name).classList.add('open');
+  // [v3.16.6] iOS 스크롤 흔들림 방지 — body를 현재 스크롤 위치에 고정
+  _modalScrollY = window.scrollY || window.pageYOffset || 0;
+  document.body.style.position = 'fixed';
+  document.body.style.top = (-_modalScrollY) + 'px';
+  document.body.style.left = '0';
+  document.body.style.right = '0';
+  document.body.style.width = '100%';
   document.body.style.overflow = 'hidden';
   if (name === 'schedule') {
     document.getElementById('scheduleDay').value = currentDay;
@@ -106,7 +114,14 @@ function openModal(name) {
 }
 function closeModal(name) {
   document.getElementById('modal-' + name).classList.remove('open');
+  // [v3.16.6] body 고정 해제 + 스크롤 위치 복원
+  document.body.style.position = '';
+  document.body.style.top = '';
+  document.body.style.left = '';
+  document.body.style.right = '';
+  document.body.style.width = '';
   document.body.style.overflow = '';
+  window.scrollTo(0, _modalScrollY);
 }
 
 // ===== EXPENSE MODAL =====
@@ -219,6 +234,8 @@ function prefetchRate(dateStr) {
       var srcLabel = { cache: '💾 캐시', frankfurter: '🌐 frankfurter.dev', 'open-er': '🌐 open.er-api', fallback: '⚠️ 폴백 (1700)' }[r.source] || r.source;
       hint.textContent = '자동 환율: 1 EUR = ' + r.rate.toFixed(2) + ' KRW (' + r.date + ', ' + srcLabel + ')';
     }
+    // [v3.16.6] 최신 환율 적재 후 입력 미리보기(conversionHint) 즉시 갱신
+    if (typeof updateConversion === 'function') updateConversion();
   });
 }
 
@@ -307,10 +324,17 @@ function formatExpenseAmount(el) {
 function updateConversion() {
   var val = parseAmountInput(document.getElementById('expenseAmount').value) || 0;
   var hint = document.getElementById('conversionHint');
+  // [v3.16.6] 미리보기 환율 = 저장 로직과 동일 (수동 재정의 > 등록일 캐시 > latest 캐시 > fallback)
+  var dateEl = document.getElementById('expenseDate');
+  var dateStr = dateEl ? dateEl.value : '';
+  var rateInputEl = document.getElementById('expenseRateOverride');
+  var manualRate = rateInputEl ? parseAmountInput(rateInputEl.value) : NaN;
+  var rate = (!isNaN(manualRate) && manualRate > 0) ? manualRate : getRateSyncForDate(dateStr);
+  var rateLabel = ' (1€=' + Math.round(rate).toLocaleString() + '원)';
   if (selectedCurrency === 'EUR') {
-    hint.textContent = 'EUR → ' + Math.round(val * EUR_TO_KRW).toLocaleString() + ' KRW';
+    hint.textContent = 'EUR → ' + Math.round(val * rate).toLocaleString() + ' KRW' + rateLabel;
   } else {
-    hint.textContent = 'KRW → €' + (val / EUR_TO_KRW).toFixed(2) + ' EUR';
+    hint.textContent = 'KRW → €' + (val / rate).toFixed(2) + ' EUR' + rateLabel;
   }
 }
 
@@ -1461,6 +1485,18 @@ document.addEventListener('DOMContentLoaded', function() {
     @media (max-width: 600px) {
       .day-hotel-info { padding: 10px 12px; gap: 10px; }
       .day-hotel-name { font-size: 13px; }
+      /* [v3.16.6] 모바일 가로폭 확대 — 좌우 패딩·들여쓰기 축소 + 텍스트 소폭 축소 */
+      .container { padding: 0 12px; }
+      .main-panel { padding: 28px 0; }
+      .timeline { padding-left: 24px; }
+      .timeline::before { left: 7px; }
+      .tl-dot { left: -21px; }
+      .tl-card { padding: 15px 14px; }
+      .tl-title { font-size: 15px; }
+      .tl-desc { font-size: 13px; line-height: 1.6; }
+      .tl-time { font-size: 12px; }
+      .tag, .map-link, .hotel-detail-link, .cost-badge { font-size: 11px; }
+      .day-header .day-meta h2 { font-size: 19px; }
     }
 
     /* ===== [v3.16.4] 모달 wide (숙소 카드용) + hotel-night-chip active ===== */
@@ -1707,6 +1743,14 @@ document.addEventListener('DOMContentLoaded', function() {
     .local-rec-tag { font-size: 11px; color: #34d399; font-weight: 600; margin-top: 6px; display: flex; align-items: center; gap: 4px; }
     .map-link { font-size: 12px; color: #3b82f6; text-decoration: none; display: inline-flex; align-items: center; gap: 3px; font-weight: 500; }
     .map-link:hover { text-decoration: underline; }
+    /* [v3.16.5] 일정 카드 → 숙소 상세 모달 연동 링크 */
+    .hotel-detail-link {
+      font-size: 12px; font-weight: 600; color: var(--tag-hotel-text, #ec4899);
+      text-decoration: none; display: inline-flex; align-items: center; gap: 3px;
+      padding: 3px 9px; border-radius: 10px; background: rgba(236,72,153,0.1);
+      cursor: pointer; transition: background 0.15s;
+    }
+    .hotel-detail-link:hover { background: rgba(236,72,153,0.2); }
     .map-svg { width: 14px; height: 14px; flex-shrink: 0; }
 
     /* ===== HOTEL CAROUSEL ===== */
@@ -2059,8 +2103,8 @@ document.addEventListener('DOMContentLoaded', function() {
       }
 
       .modal-overlay .modal {
-        width: 95%;
-        padding: 20px;
+        width: 100%; /* [v3.16.6] 좌우 여백 변화로 인한 흔들림 제거 */
+        padding: 20px 16px;
       }
 
       .day-tabs {
@@ -2110,12 +2154,15 @@ document.addEventListener('DOMContentLoaded', function() {
       position: fixed; inset: 0; z-index: 10000;
       background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
       display: none; align-items: flex-end; justify-content: center;
+      overscroll-behavior: none; /* [v3.16.6] 배경 스크롤 체이닝 차단 */
     }
     .modal-overlay.open { display: flex; }
     @media (min-width: 600px) { .modal-overlay { align-items: center; } }
     .modal-overlay > .modal {
       background: var(--surface); border: 1px solid var(--border); border-radius: 16px 16px 0 0;
-      width: 100%; max-width: 480px; max-height: 85vh; overflow-y: auto;
+      width: 100%; max-width: 480px; max-height: 85vh;
+      overflow-y: auto; overflow-x: hidden; /* [v3.16.6] 좌우 흔들림 방지 */
+      overscroll-behavior: contain; -webkit-overflow-scrolling: touch; /* [v3.16.6] iOS 세로 스크롤 고정 */
       padding: 28px; position: relative;
     }
     @media (min-width: 600px) { .modal-overlay > .modal { border-radius: 16px; } }
@@ -2535,9 +2582,9 @@ const DAYS = [
 const SCHEDULE_DATA = [
   { day: 1, time: '18:00', title: '인천국제공항 출발', desc: '인천공항 <strong>제1터미널</strong> 출발. 국제선 <strong>2시간 전</strong> 도착 권장. 체크인 & 출국심사.', type: 'flight', cost: null, map: 'https://www.google.com/maps/search/Incheon+International+Airport+Terminal+1' },
   { day: 2, time: '10:25 (현지시각)', title: '파리 CDG 도착 (AY1571)', desc: '헬싱키 환승 후 파리 <strong>샤를 드 골 공항</strong>(CDG) 도착. 입국심사 & 수하물 수령.', type: 'flight', cost: null, map: 'https://www.google.com/maps/search/Paris+Charles+de+Gaulle+Airport' },
-  { day: 2, time: '12:34', title: 'CDG → Avignon Centre', desc: '<strong>TGV</strong> 고속열차. 약 <strong>2시간 40분</strong> 소요. 아비뇽 중앙역 도착 후 환승.', type: 'transport', cost: 90.20, currency: 'EUR', map: 'https://www.google.com/maps/dir/Paris+CDG+Airport/Avignon+Centre' },
-  { day: 2, time: '15:30', title: 'Avignon → Marseille St-Charles', desc: '<strong>TGV</strong> 약 <strong>30분</strong>. 마르세유 생샤를역 도착.', type: 'transport', cost: 20.00, currency: 'EUR', map: 'https://www.google.com/maps/dir/Gare+Avignon+Centre/Gare+Marseille+Saint+Charles' },
-  { day: 2, time: '18:00', title: '마르세유 에어비앤비 체크인', desc: '<strong>Rue Saint-Ferreol</strong> 근처. 짐 정리 후 근처 산책.', type: 'hotel', cost: null, map: 'https://www.google.com/maps/search/Rue+Saint-Ferreol+Marseille' },
+  { day: 2, time: '12:34 → 15:27', title: 'CDG → Avignon TGV (OUIGO 7841)', desc: '<strong>OUIGO 고속열차 n°7841</strong> · <strong>Paris Roissy-CDG 2 공항역</strong> 출발 → <strong>Avignon TGV</strong>역 도착. 소요 <strong>2h53</strong>. 좌석등급 OUIGO Essential, 수하물 1인당 기내가방 1 + 캐빈가방 1. ⚠️ <strong>마르세유행과 동일 열차편</strong>이라 아비뇽에서 <strong>환승 없이 그대로 탑승</strong>(정차만). 성인 2명 €39×2.', type: 'transport', cost: 78.00, currency: 'EUR', notes: 'OUIGO 7841 · 탑승객 SANGEUN BAE / AYOUNG JANG · CO₂e 1.0kg', map: 'https://www.google.com/maps/dir/Paris+CDG+Airport/Avignon+TGV+Station' },
+  { day: 2, time: '15:30 → 16:08', title: 'Avignon TGV → Marseille St-Charles (OUIGO 7841)', desc: '<strong>OUIGO 고속열차 n°7841</strong> (CDG발과 동일 편) · <strong>Avignon TGV</strong>역 → <strong>Marseille Saint-Charles</strong>역. 소요 <strong>0h38</strong>. OUIGO Essential, 수하물 기내1+캐빈1. 성인 2명 €10×2.', type: 'transport', cost: 20.00, currency: 'EUR', notes: 'OUIGO 7841 · CO₂e 0.1kg', map: 'https://www.google.com/maps/dir/Avignon+TGV+Station/Gare+Marseille+Saint+Charles' },
+  { day: 2, time: '18:00', title: '구항에 위치한 아늑한 스튜디오 체크인', desc: '<strong>마르세유 구항(Vieux-Port) 부근</strong> Airbnb 스튜디오. 총 <strong>2박</strong>(6/3~6/5). 짐 정리 후 항구 주변 산책. <em>아래 "숙소 상세"에서 등록 정보 확인.</em>', type: 'hotel', cost: null, map: 'https://www.google.com/maps/search/Vieux-Port+Marseille' },
   { day: 3, time: '10:00', title: '"Marseille" Landmark 포토스팟', desc: '마르세유 시내 <strong>인생샷 명소</strong>. 도보 이동.', type: 'spot', map: 'https://maps.app.goo.gl/EbrXFiHjm5hw8wSt8' },
   { day: 3, time: '11:30', title: 'Vieux-Port de Marseille', desc: '마르세유 <strong>구항구</strong> 산책. 어시장 & 보트 구경.', type: 'spot', map: 'https://maps.app.goo.gl/VUi5DAWGWgnm3bUb8' },
   { day: 3, time: '13:00', title: '점심식사', desc: '구항구 근처 <strong>로컬 카페</strong>에서 점심.', type: 'meal', cost: 15, map: 'https://www.google.com/maps/search/restaurant+near+Vieux+Port+Marseille' },
@@ -2798,7 +2845,7 @@ const SPOT_DATA = [
 ];
 
 const HOTEL_DATA = [
-  { name: '마르세유 에어비앤비', subName: '마르세유 시내 · Rue Saint-Ferreol', type: 'Airbnb', typeEmoji: '🏠', checkIn: '2026-06-03', checkOut: '2026-06-05', nights: 2, region: 'marseille', priceKRW: 194480, bookingSite: 'Airbnb', bookingUrl: 'https://www.airbnb.com', mapUrl: 'https://www.google.com/maps/search/Rue+Saint-Ferreol+Marseille', cancelDeadline: '', paymentDue: '' },
+  { name: '구항에 위치한 아늑한 스튜디오', subName: '마르세유 구항(Vieux-Port) 부근', type: 'Airbnb', typeEmoji: '🏠', checkIn: '2026-06-03', checkOut: '2026-06-05', nights: 2, region: 'marseille', priceKRW: 267648, bookingSite: 'Airbnb', bookingUrl: 'https://www.airbnb.com', mapUrl: 'https://www.google.com/maps/search/Vieux-Port+Marseille', cancelDeadline: '', paymentDue: '' },
   { name: 'Hôtel Le Relais', subName: '르 를레 · 무스티에생트마리', type: '호텔', typeEmoji: '🏨', checkIn: '2026-06-05', checkOut: '2026-06-06', nights: 1, region: 'provence', priceEUR: 82, bookingSite: 'Booking.com', bookingUrl: 'https://www.booking.com', mapUrl: 'https://maps.app.goo.gl/kJ5t46Wh2vWWygXcA', cancelDeadline: '', paymentDue: '' },
   { name: 'Saint-Jeannet 에어비앤비', subName: '생자네 · 코트다쥐르 내륙', type: 'Airbnb', typeEmoji: '🏠', checkIn: '2026-06-06', checkOut: '2026-06-08', nights: 2, region: 'cotedazur', priceKRW: 178628, bookingSite: 'Airbnb', bookingUrl: 'https://www.airbnb.com', mapUrl: 'https://www.google.com/maps/search/Saint-Jeannet+France', cancelDeadline: '', paymentDue: '' },
   { name: '니스 에어비앤비', subName: '니스 구시가지 근처', type: 'Airbnb', typeEmoji: '🏠', checkIn: '2026-06-08', checkOut: '2026-06-10', nights: 2, region: 'nice', priceKRW: 0, bookingSite: 'Airbnb', bookingUrl: 'https://www.airbnb.com', mapUrl: 'https://www.google.com/maps/search/Nice+Old+Town+accommodation', cancelDeadline: '', paymentDue: '' },
@@ -2821,7 +2868,7 @@ const BUDGET_DATA = {
     { label: '입장료 및 체험', amount: 80, currency: 'EUR' }
   ],
   hotel: [
-    { label: '마르세유 (2박)', amount: 194480, currency: 'KRW' },
+    { label: '마르세유 구항 스튜디오 (2박)', amount: 267648, currency: 'KRW' },
     { label: 'Le Relais (1박)', amount: 82, currency: 'EUR' },
     { label: '생자네 (2박)', amount: 178628, currency: 'KRW' },
     { label: '니스 (2박)', amount: 450000, currency: 'KRW' },
@@ -3024,6 +3071,18 @@ function renderSchedule() {
         notesHTML = '<span class="tag tag-transport">' + item.notes + '</span>';
       }
 
+      // [v3.16.5] 숙소 관련 일정(type:hotel)은 그날 머무는 숙소를 자동으로 찾아
+      //   상단 배너와 동일한 숙소 상세 모달로 연동 (등록된 HOTEL_DATA 기준 — localStorage 포함)
+      var hotelLinkHTML = '';
+      if (item.type === 'hotel') {
+        var dayStays = getStayingHotelsForDay(day.date);
+        if (dayStays.length > 0) {
+          var stayHotel = dayStays[0].hotel;
+          var stayNameEsc = stayHotel.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+          hotelLinkHTML = '<a class="hotel-detail-link" href="javascript:void(0)" onclick="openHotelDetailModal(\'' + stayNameEsc + '\', \'' + day.date + '\')" title="등록된 숙소 정보 보기">🏨 숙소 상세</a>';
+        }
+      }
+
       html += '<div class="tl-item">';
       html += '<div class="tl-dot" style="border-color:var(--day' + day.num + ');"></div>';
       html += '<div class="tl-card">';
@@ -3034,6 +3093,7 @@ function renderSchedule() {
       html += '<span class="tag tag-' + item.type + '">' + getTypeLabel(item.type) + '</span>';
       html += notesHTML;
       html += mapHTML;
+      html += hotelLinkHTML;
       html += '</div>';
       // ── 근처 추천 스팟 ──
       var nearbyItems = NEARBY_DATA[item.title] || [];
@@ -4616,8 +4676,16 @@ function submitHotelAdd() {
 }
 
 // ===== MODAL MANAGEMENT =====
+var _modalScrollY = 0;
 function openModal(name) {
   document.getElementById('modal-' + name).classList.add('open');
+  // [v3.16.6] iOS 스크롤 흔들림 방지 — body를 현재 스크롤 위치에 고정
+  _modalScrollY = window.scrollY || window.pageYOffset || 0;
+  document.body.style.position = 'fixed';
+  document.body.style.top = (-_modalScrollY) + 'px';
+  document.body.style.left = '0';
+  document.body.style.right = '0';
+  document.body.style.width = '100%';
   document.body.style.overflow = 'hidden';
   if (name === 'schedule') {
     document.getElementById('scheduleDay').value = currentDay;
@@ -4626,7 +4694,14 @@ function openModal(name) {
 }
 function closeModal(name) {
   document.getElementById('modal-' + name).classList.remove('open');
+  // [v3.16.6] body 고정 해제 + 스크롤 위치 복원
+  document.body.style.position = '';
+  document.body.style.top = '';
+  document.body.style.left = '';
+  document.body.style.right = '';
+  document.body.style.width = '';
   document.body.style.overflow = '';
+  window.scrollTo(0, _modalScrollY);
 }
 
 // ===== EXPENSE MODAL =====
