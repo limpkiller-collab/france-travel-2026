@@ -1,0 +1,23 @@
+{
+  "name": "프랑스 여행 대시보드",
+  "short_name": "프랑스여행",
+  "start_url": "/france-travel-2026/",
+  "scope": "/france-travel-2026/",
+  "display": "standalone",
+  "background_color": "#0A0A0A",
+  "theme_color": "#0A0A0A",
+  "icons": [
+    {
+      "src": "france-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "france-favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
